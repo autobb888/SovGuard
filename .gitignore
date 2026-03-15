@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.env
+.env.local
+*.map
+*.tsbuildinfo
+*.db
+*.db-shm
+*.db-wal
+scripts/logs/*.log
+pentest/results/*.json
+package-lock.json

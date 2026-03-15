@@ -1,0 +1,48 @@
+{
+  "name": "@sovguard/engine",
+  "version": "1.0.0",
+  "description": "Prompt injection detection and safe message delivery engine for AI agents",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "node --import tsx --test test/*.test.ts",
+    "prepublishOnly": "npm test && npm run build",
+    "start": "node dist/server.js",
+    "dev": "tsx src/server.ts",
+    "scout": "bash scripts/pattern-scout.sh",
+    "scout:dry": "SCOUT_DRY_RUN=1 bash scripts/pattern-scout.sh",
+    "pentest": "tsx pentest/run.ts",
+    "pentest:json": "tsx pentest/run.ts --json",
+    "pentest:failures": "tsx pentest/run.ts --failures-only"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@fastify/cors": "^11.2.0",
+    "@fastify/helmet": "^13.0.2",
+    "@fastify/rate-limit": "^10.3.0",
+    "better-sqlite3": "^11.7.0",
+    "fastify": "^5.2.1",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.12.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.3"
+  }
+}

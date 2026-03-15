@@ -1,0 +1,10 @@
+node_modules
+.git
+test
+dist
+*.db
+*.db-shm
+*.db-wal
+.env
+.env.*
+.claude
