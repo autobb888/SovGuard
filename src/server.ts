@@ -6,9 +6,10 @@
 import Fastify from 'fastify';
 import rateLimit from '@fastify/rate-limit';
 import { z } from 'zod';
-import { timingSafeEqual, createHash } from 'crypto';
+import { timingSafeEqual, createHash, randomUUID } from 'crypto';
 import { SovGuardEngine } from './index.js';
-import { ScanBody, ScanFileBody, ScanFileContentBody, ScanOutputBody, WrapBody, CanaryCreateBody, CanaryCheckBody } from './schemas.js';
+import { getDb } from './tenant/db.js';
+import { ScanBody, ScanFileBody, ScanFileContentBody, ScanOutputBody, ScanReportBody, WrapBody, CanaryCreateBody, CanaryCheckBody } from './schemas.js';
 import { version } from './version.js';
 
 const API_KEY = process.env.SOVGUARD_API_KEY;
@@ -111,6 +112,17 @@ app.post('/v1/canary/check', async (req) => {
   return result;
 });
 
+app.post('/v1/report', async (req) => {
+  const body = ScanReportBody.parse(req.body);
+  const id = randomUUID();
+  const now = Date.now();
+  getDb().prepare(`
+    INSERT INTO scan_reports (id, tenant_id, key_prefix, content_hash, file_path, score, mime_type, workspace_uid, verdict, notes, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(id, 'self-hosted', null, body.content_hash, body.file_path ?? null, body.score, body.mime_type ?? null, body.workspace_uid ?? null, body.verdict, body.notes ?? null, now);
+  return { id, status: 'received' };
+});
+
 app.get('/v1/stats', async () => {
   return engine.getStats();
 });
@@ -161,6 +173,12 @@ async function shutdown(signal: string): Promise<void> {
   try {
     const { stopCleanup } = await import('./canary/tokens.js');
     stopCleanup();
+  } catch {
+    // best effort
+  }
+  try {
+    const { closeDb } = await import('./tenant/db.js');
+    closeDb();
   } catch {
     // best effort
   }
