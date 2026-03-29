@@ -123,7 +123,7 @@ export interface OutputScanContext {
   jobId: string;
   jobCategory?: string;
   jobFingerprints?: Map<string, Set<string>>;
-  agentVerusId?: string;
+  agentPlatformId?: string;
   /** P2-OUT-3: Addresses to whitelist in financial scanner (e.g., job's payment address) */
   whitelistedAddresses?: Set<string>;
 }

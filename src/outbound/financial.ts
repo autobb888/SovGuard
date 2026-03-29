@@ -9,8 +9,8 @@ import type { OutputFlag } from '../types.js';
 const BTC_RE = /\b(1[1-9A-HJ-NP-Za-km-z]{25,34}|3[1-9A-HJ-NP-Za-km-z]{25,34}|bc1[a-zA-HJ-NP-Z0-9]{25,87})\b/g;
 // ETH: 0x + 40 hex
 const ETH_RE = /\b0x[0-9a-fA-F]{40}\b/g;
-// VRSC: R-address
-const VRSC_RE = /\bR[1-9A-HJ-NP-Za-km-z]{25,34}\b/g;
+// SOL: Solana base58 (32-44 chars, no 0/O/I/l)
+const SOL_RE = /\b[1-9A-HJ-NP-Za-km-z]{32,44}\b/g;
 // XMR: Monero mainnet (4 or 8 prefix, 95 chars)
 const XMR_RE = /\b[48][0-9A-Za-z]{94}\b/g;
 // LTC: Litecoin (L/M/ltc1 prefix)
@@ -37,7 +37,7 @@ export function scanFinancial(message: string, whitelistedAddresses?: Set<string
   for (const [re, label] of [
     [BTC_RE, 'BTC wallet'],
     [ETH_RE, 'ETH wallet'],
-    [VRSC_RE, 'VRSC wallet'],
+    [SOL_RE, 'SOL wallet'],
     [XMR_RE, 'XMR wallet'],
     [LTC_RE, 'LTC wallet'],
   ] as const) {

@@ -196,7 +196,7 @@ const PATTERNS: PatternDef[] = [
   { pattern: /<\/?assistant_instruction>/i, category: 'chatml_injection', severity: 'high', label: 'assistant_instruction_tag' },
 
   // ── Financial Manipulation ─────────────────────────────────
-  { pattern: /send\s+(all\s+)?(funds?|money|payment|vrsc|tokens?|crypto)\s+to/i, category: 'financial_manipulation', severity: 'high', label: 'send_funds' },
+  { pattern: /send\s+(all\s+)?(funds?|money|payment|tokens?|crypto)\s+to/i, category: 'financial_manipulation', severity: 'high', label: 'send_funds' },
   { pattern: /transfer\s+(all\s+)?(funds?|balance|payment)/i, category: 'financial_manipulation', severity: 'high', label: 'transfer_funds' },
   { pattern: /change\s+(the\s+)?(wallet|address|recipient|payment)/i, category: 'financial_manipulation', severity: 'high', label: 'change_wallet' },
 

@@ -8,6 +8,8 @@ models/
 *.db
 *.db-shm
 *.db-wal
+*.sqlite
+.claude/
 scripts/logs/*.log
 pentest/results/*.json
 package-lock.json
