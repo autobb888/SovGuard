@@ -6,6 +6,7 @@
  */
 
 import type { LayerResult } from '../types.js';
+import { localClassifierScan, isLocalModelAvailable } from './classifier-local.js';
 
 interface ClassifierConfig {
   lakeraApiKey?: string;
@@ -13,6 +14,8 @@ interface ClassifierConfig {
   apiUrl?: string;
   /** Timeout in ms. Default: 5000 */
   timeoutMs?: number;
+  /** Classifier mode: 'local' (ONNX), 'lakera' (API), or 'auto' (local if model exists, else lakera). Default: 'auto' */
+  classifierMode?: 'local' | 'lakera' | 'auto';
 }
 
 /**
@@ -48,6 +51,18 @@ const DEFAULT_TIMEOUT_MS = 5000;
  * Otherwise returns a stub result (score 0, not flagged).
  */
 export async function classifierScan(text: string, config?: ClassifierConfig): Promise<LayerResult> {
+  const mode = config?.classifierMode || 'auto';
+
+  // Route based on mode
+  if (mode === 'local') {
+    return localClassifierScan(text);
+  }
+
+  if (mode === 'auto' && isLocalModelAvailable()) {
+    return localClassifierScan(text);
+  }
+
+  // Fall through to Lakera API
   const apiKey = config?.lakeraApiKey || process.env.LAKERA_API_KEY;
 
   if (!apiKey) {

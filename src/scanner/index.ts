@@ -7,6 +7,7 @@ import type { Classification, LayerResult, SovGuardConfig, ScanResult } from '..
 import { regexScan } from './regex.js';
 import { perplexityScan } from './perplexity.js';
 import { classifierScan } from './classifier.js';
+import { indirectInjectionScan } from './indirect.js';
 
 /**
  * Run all scanner layers and produce a combined ScanResult.
@@ -28,6 +29,10 @@ export async function scan(text: string, config: SovGuardConfig = {}): Promise<S
   })));
   layers.push(regexResult);
 
+  // Layer: Indirect injection heuristics (always runs, fast)
+  const indirectResult = indirectInjectionScan(input);
+  layers.push(indirectResult);
+
   // Layer 2: Perplexity (optional, fast)
   if (config.enablePerplexity !== false) {
     const perplexityResult = perplexityScan(input);
@@ -38,6 +43,7 @@ export async function scan(text: string, config: SovGuardConfig = {}): Promise<S
   if (config.enableClassifier !== false) {
     const classifierResult = await classifierScan(input, {
       lakeraApiKey: config.lakeraApiKey,
+      classifierMode: config.classifierMode,
     });
     layers.push(classifierResult);
   }

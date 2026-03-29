@@ -9,10 +9,12 @@ import { scanURLs } from './urls.js';
 import { scanCode } from './code.js';
 import { scanFinancial } from './financial.js';
 import { scanContamination } from './contamination.js';
+import { scanToxicity } from './toxicity.js';
 
 const ACTION_SCORES: Record<string, number> = {
   pass: 0,
   warn: 0.35,
+  flag: 0.45,
   redact: 0.55,
   block: 0.8,
 };
@@ -45,6 +47,7 @@ export function scanOutput(
     ...scanCode(message, context.jobCategory),
     ...scanFinancial(message, context.whitelistedAddresses),
     ...scanContamination(message, context.jobId, context.jobFingerprints),
+    ...scanToxicity(message),
   ];
 
   const score = allFlags.length === 0
@@ -67,3 +70,4 @@ export { scanURLs } from './urls.js';
 export { scanCode } from './code.js';
 export { scanFinancial } from './financial.js';
 export { scanContamination } from './contamination.js';
+export { scanToxicity } from './toxicity.js';

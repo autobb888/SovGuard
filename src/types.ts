@@ -2,6 +2,8 @@
  * SovGuard Engine — Type Definitions
  */
 
+import type { TopicRailsConfig } from './scanner/topic-rails.js';
+
 // ─── Scanner Types ───────────────────────────────────────────────
 
 export type Severity = 'low' | 'medium' | 'high';
@@ -137,11 +139,12 @@ export interface OutputScanResult {
 
 export interface OutputFlag {
   type: 'pii_detected' | 'suspicious_url' | 'malicious_code' |
-        'cross_contamination' | 'financial_manipulation' | 'agent_exfiltration' | 'data_uri';
+        'cross_contamination' | 'financial_manipulation' | 'agent_exfiltration' | 'data_uri' |
+        'toxicity';
   severity: 'low' | 'medium' | 'high' | 'critical';
   detail: string;
   evidence: string;
-  action: 'pass' | 'warn' | 'redact' | 'block';
+  action: 'pass' | 'warn' | 'redact' | 'block' | 'flag';
 }
 
 // ─── Config ──────────────────────────────────────────────────────
@@ -157,6 +160,10 @@ export interface SovGuardConfig {
   enableClassifier?: boolean;
   /** Lakera API key for ML classification */
   lakeraApiKey?: string;
+  /** Classifier mode: 'local' (self-hosted ONNX), 'lakera' (API), 'auto' (local if available, else lakera). Default: 'auto' */
+  classifierMode?: 'local' | 'lakera' | 'auto';
   /** Custom regex patterns to add */
   extraPatterns?: Array<{ pattern: RegExp; category: AttackCategory; severity: Severity }>;
+  /** Configurable topic/policy rails for denied topics */
+  topicRails?: TopicRailsConfig;
 }

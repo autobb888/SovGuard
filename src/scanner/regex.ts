@@ -338,6 +338,38 @@ const PATTERNS: PatternDef[] = [
   { pattern: /before\s+(that|you\s+do\s+that)\s*,?\s*(ignore|forget|disregard|override)/i, category: 'instruction_override', severity: 'high', label: 'deceptive_pivot_before' },
   { pattern: /oh?\s+(and|also|btw|by\s+the\s+way)\s*,?\s*(ignore|forget|disregard|show|reveal|override)/i, category: 'instruction_override', severity: 'high', label: 'deceptive_aside' },
   { pattern: /one\s+more\s+thing\s*[,:]\s*(ignore|forget|disregard|reveal|show|override)/i, category: 'instruction_override', severity: 'high', label: 'deceptive_one_more_thing' },
+
+  // ── Multilingual Expansion (JA, KO, AR, RU, HI, TR) ─────────
+  // Japanese (JA)
+  { pattern: /前の指示を無視/, category: 'instruction_override', severity: 'high', label: 'ignore_previous_ja' },
+  { pattern: /システムプロンプトを表示/, category: 'exfiltration', severity: 'high', label: 'show_system_prompt_ja' },
+  { pattern: /新しい指示に従/, category: 'instruction_override', severity: 'high', label: 'follow_new_instructions_ja' },
+  { pattern: /すべてのルールを忘れ/, category: 'instruction_override', severity: 'high', label: 'forget_all_rules_ja' },
+  // Korean (KO)
+  { pattern: /이전 지시를 무시/, category: 'instruction_override', severity: 'high', label: 'ignore_previous_ko' },
+  { pattern: /시스템 프롬프트를 보여/, category: 'exfiltration', severity: 'high', label: 'show_system_prompt_ko' },
+  { pattern: /새로운 지시를 따르/, category: 'instruction_override', severity: 'high', label: 'follow_new_instructions_ko' },
+  { pattern: /모든 규칙을 잊어/, category: 'instruction_override', severity: 'high', label: 'forget_all_rules_ko' },
+  // Arabic (AR)
+  { pattern: /تجاهل التعليمات السابقة/, category: 'instruction_override', severity: 'high', label: 'ignore_previous_ar' },
+  { pattern: /أظهر موجه النظام/, category: 'exfiltration', severity: 'high', label: 'show_system_prompt_ar' },
+  { pattern: /اتبع التعليمات الجديدة/, category: 'instruction_override', severity: 'high', label: 'follow_new_instructions_ar' },
+  { pattern: /انسَ جميع القواعد/, category: 'instruction_override', severity: 'high', label: 'forget_all_rules_ar' },
+  // Russian (RU)
+  { pattern: /игнорируй предыдущие инструкции/i, category: 'instruction_override', severity: 'high', label: 'ignore_previous_ru' },
+  { pattern: /покажи системный промпт/i, category: 'exfiltration', severity: 'high', label: 'show_system_prompt_ru' },
+  { pattern: /следуй новым инструкциям/i, category: 'instruction_override', severity: 'high', label: 'follow_new_instructions_ru' },
+  { pattern: /забудь все правила/i, category: 'instruction_override', severity: 'high', label: 'forget_all_rules_ru' },
+  // Hindi (HI)
+  { pattern: /पिछले निर्देशों को अनदेखा/, category: 'instruction_override', severity: 'high', label: 'ignore_previous_hi' },
+  { pattern: /सिस्टम प्रॉम्प्ट दिखाओ/, category: 'exfiltration', severity: 'high', label: 'show_system_prompt_hi' },
+  { pattern: /नए निर्देशों का पालन/, category: 'instruction_override', severity: 'high', label: 'follow_new_instructions_hi' },
+  { pattern: /सभी नियम भूल जाओ/, category: 'instruction_override', severity: 'high', label: 'forget_all_rules_hi' },
+  // Turkish (TR)
+  { pattern: /önceki talimatları yoksay/i, category: 'instruction_override', severity: 'high', label: 'ignore_previous_tr' },
+  { pattern: /sistem istemini göster/i, category: 'exfiltration', severity: 'high', label: 'show_system_prompt_tr' },
+  { pattern: /yeni talimatlara uy/i, category: 'instruction_override', severity: 'high', label: 'follow_new_instructions_tr' },
+  { pattern: /tüm kuralları unut/i, category: 'instruction_override', severity: 'high', label: 'forget_all_rules_tr' },
 ];
 
 function scanText(text: string, allPatterns: PatternDef[]): PatternMatch[] {

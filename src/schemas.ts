@@ -1,6 +1,6 @@
 /**
  * SovGuard — Shared Zod Schemas for Request Validation
- * Used by server.ts for request validation.
+ * Used by server.ts (self-hosted) and integrations.
  */
 
 import { z } from 'zod';
@@ -43,5 +43,15 @@ export const ScanOutputBody = z.object({
   jobId: z.string().min(1).max(256),
   jobCategory: z.string().min(1).max(256).optional(),
   whitelistedAddresses: z.array(z.string().max(256)).max(100).optional(),
+});
+
+export const ScanReportBody = z.object({
+  file_path: z.string().min(1).max(1024).optional(),
+  content_hash: z.string().min(1).max(128),
+  score: z.number().min(0).max(1),
+  mime_type: z.string().min(1).max(256).optional(),
+  workspace_uid: z.string().min(1).max(256).optional(),
+  verdict: z.enum(['false_positive', 'false_negative', 'confirmed']),
+  notes: z.string().max(1000).optional(),
 });
 

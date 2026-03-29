@@ -11,6 +11,8 @@ import { scanFileContent, scanText } from './file/content-scanner.js';
 import type { ContentScanResult, ContentScanOptions } from './file/content-scanner.js';
 import { recordScan, recordCanaryLeak, getStats, resetStats } from './monitor/stats.js';
 import { scanOutput } from './outbound/index.js';
+import { scanTopics as scanTopicsImpl } from './scanner/topic-rails.js';
+import type { TopicRailsConfig, TopicMatch, DeniedTopic } from './scanner/topic-rails.js';
 import type {
   SovGuardConfig,
   ScanResult,
@@ -118,6 +120,15 @@ export class SovGuardEngine {
   async scanOutput(message: string, context: OutputScanContext): Promise<OutputScanResult> {
     return scanOutput(message, context);
   }
+
+  /**
+   * Scan text (inbound or outbound) against the configured topic/policy rails.
+   * Returns an array of matched denied topics. Empty if no topicRails config set.
+   */
+  scanTopics(text: string): TopicMatch[] {
+    if (!this.config.topicRails) return [];
+    return scanTopicsImpl(text, this.config.topicRails);
+  }
 }
 
 // Re-export types
@@ -162,3 +173,10 @@ export { scanURLs } from './outbound/urls.js';
 export { scanCode } from './outbound/code.js';
 export { scanFinancial } from './outbound/financial.js';
 export { scanContamination } from './outbound/contamination.js';
+export { scanToxicity } from './outbound/toxicity.js';
+export { localClassifierScan, isLocalModelAvailable } from './scanner/classifier-local.js';
+export { indirectInjectionScan } from './scanner/indirect.js';
+export { scanTopics } from './scanner/topic-rails.js';
+export type { TopicRailsConfig, DeniedTopic, TopicMatch } from './scanner/topic-rails.js';
+export { getDb, setDb, closeDb } from './tenant/db.js';
+export { ScanReportBody } from './schemas.js';
