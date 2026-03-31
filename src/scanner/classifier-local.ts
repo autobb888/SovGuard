@@ -44,8 +44,8 @@ async function ensureModel(): Promise<boolean> {
     const tokenizersModule = await (Function('return import("tokenizers")')() as Promise<any>);
     Tokenizer = tokenizersModule.Tokenizer;
 
-    // Load tokenizer from HuggingFace tokenizer.json
-    tokenizer = Tokenizer.fromFile(tokenizerPath);
+    // Load tokenizer from HuggingFace tokenizer.json (async in tokenizers >=0.13.4)
+    tokenizer = await Tokenizer.fromFile(tokenizerPath);
     tokenizer.setTruncation(MAX_LENGTH);
     tokenizer.setPadding({ maxLength: MAX_LENGTH, padId: 0, padToken: '[PAD]' });
 
@@ -91,7 +91,7 @@ export async function localClassifierScan(text: string): Promise<LayerResult> {
 
   try {
     // Tokenize using the HuggingFace tokenizer (handles SentencePiece/Unigram correctly)
-    const encoded = tokenizer.encode(text);
+    const encoded = await tokenizer.encode(text);
     const ids: number[] = encoded.getIds();
     const attMask: number[] = encoded.getAttentionMask();
 
