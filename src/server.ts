@@ -25,9 +25,12 @@ function safeCompare(a: string, b: string): boolean {
   return timingSafeEqual(aBuf, bBuf);
 }
 
+import { isLocalModelAvailable } from './scanner/classifier-local.js';
+
 const engine = new SovGuardEngine({
-  enableClassifier: !!process.env.LAKERA_API_KEY,
+  enableClassifier: !!process.env.LAKERA_API_KEY || isLocalModelAvailable(),
   lakeraApiKey: process.env.LAKERA_API_KEY,
+  classifierMode: (process.env.SOVGUARD_CLASSIFIER_MODE as 'local' | 'lakera' | 'auto') || 'auto',
 });
 
 const app = Fastify({ logger: true, bodyLimit: 131072 });
