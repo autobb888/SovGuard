@@ -1,15 +1,17 @@
 /**
  * Layer 3: Self-Hosted ML Classifier
  * Uses DeBERTa-v3-base-prompt-injection via ONNX Runtime.
+ * Tokenization via HuggingFace tokenizers (Rust-based, accurate).
  * No external API calls — model runs entirely in-process.
  */
 
 import type { LayerResult } from '../types.js';
-import { readFileSync, existsSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
-// Lazy-loaded ONNX runtime and model session
+// Lazy-loaded modules and state
 let ort: any = null;
+let Tokenizer: any = null;
 let session: any = null;
 let tokenizer: any = null;
 let modelLoaded = false;
@@ -17,109 +19,41 @@ let loadError: string | null = null;
 
 const MODEL_DIR = process.env.SOVGUARD_MODEL_DIR || join(process.cwd(), 'models', 'deberta-v3-prompt-injection');
 const MODEL_FILE = 'model.onnx';
-const VOCAB_FILE = 'tokenizer.json';
-
-/**
- * Simple tokenizer for DeBERTa.
- * Loads the HuggingFace tokenizer.json and performs WordPiece-style tokenization.
- * For production accuracy we use a simplified approach:
- * split on whitespace/punctuation, look up token IDs, pad/truncate to max_length.
- */
-interface TokenizerData {
-  model: { vocab: Record<string, number> };
-  added_tokens?: Array<{ id: number; content: string }>;
-}
-
+const TOKENIZER_FILE = 'tokenizer.json';
 const MAX_LENGTH = 512;
-const PAD_TOKEN_ID = 0;
-const CLS_TOKEN_ID = 1;
-const SEP_TOKEN_ID = 2;
-const UNK_TOKEN_ID = 3;
-
-function loadTokenizer(path: string): TokenizerData {
-  const raw = readFileSync(path, 'utf-8');
-  return JSON.parse(raw);
-}
-
-function tokenize(text: string, vocab: Record<string, number>): number[] {
-  // Simple whitespace + subword tokenization
-  const tokens: number[] = [CLS_TOKEN_ID];
-  const words = text.toLowerCase().split(/\s+/).filter(Boolean);
-
-  for (const word of words) {
-    if (tokens.length >= MAX_LENGTH - 1) break;
-    const id = vocab[word];
-    if (id !== undefined) {
-      tokens.push(id);
-    } else {
-      // Try subword tokenization: split into characters as fallback
-      // Check for ##subword pieces
-      let remaining = word;
-      let isFirst = true;
-      while (remaining.length > 0 && tokens.length < MAX_LENGTH - 1) {
-        let found = false;
-        for (let end = remaining.length; end > 0; end--) {
-          const piece = isFirst ? remaining.slice(0, end) : '##' + remaining.slice(0, end);
-          const pieceId = vocab[piece];
-          if (pieceId !== undefined) {
-            tokens.push(pieceId);
-            remaining = remaining.slice(end);
-            isFirst = false;
-            found = true;
-            break;
-          }
-        }
-        if (!found) {
-          tokens.push(UNK_TOKEN_ID);
-          break;
-        }
-      }
-    }
-  }
-
-  tokens.push(SEP_TOKEN_ID);
-  return tokens;
-}
-
-function padTokens(tokenIds: number[], maxLen: number): { inputIds: BigInt64Array; attentionMask: BigInt64Array } {
-  const inputIds = new BigInt64Array(maxLen).fill(BigInt(PAD_TOKEN_ID));
-  const attentionMask = new BigInt64Array(maxLen).fill(0n);
-
-  for (let i = 0; i < Math.min(tokenIds.length, maxLen); i++) {
-    inputIds[i] = BigInt(tokenIds[i]);
-    attentionMask[i] = 1n;
-  }
-
-  return { inputIds, attentionMask };
-}
 
 async function ensureModel(): Promise<boolean> {
   if (modelLoaded) return true;
   if (loadError) return false;
 
   const modelPath = join(MODEL_DIR, MODEL_FILE);
-  const vocabPath = join(MODEL_DIR, VOCAB_FILE);
+  const tokenizerPath = join(MODEL_DIR, TOKENIZER_FILE);
 
   if (!existsSync(modelPath)) {
     loadError = `Model not found at ${modelPath}. Run: scripts/download-model.sh`;
     return false;
   }
-  if (!existsSync(vocabPath)) {
-    loadError = `Tokenizer not found at ${vocabPath}. Run: scripts/download-model.sh`;
+  if (!existsSync(tokenizerPath)) {
+    loadError = `Tokenizer not found at ${tokenizerPath}. Run: scripts/download-model.sh`;
     return false;
   }
 
   try {
-    // Dynamic import of onnxruntime-node (not installed at build time)
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    // Dynamic imports (these packages may not be installed at build time)
     ort = await (Function('return import("onnxruntime-node")')() as Promise<any>);
+    const tokenizersModule = await (Function('return import("tokenizers")')() as Promise<any>);
+    Tokenizer = tokenizersModule.Tokenizer;
 
-    // Create inference session — use default CPU backend
+    // Load tokenizer from HuggingFace tokenizer.json
+    tokenizer = Tokenizer.fromFile(tokenizerPath);
+    tokenizer.setTruncation(MAX_LENGTH);
+    tokenizer.setPadding({ maxLength: MAX_LENGTH, padId: 0, padToken: '[PAD]' });
+
+    // Create ONNX inference session
     session = await ort.InferenceSession.create(modelPath);
 
-    tokenizer = loadTokenizer(vocabPath);
     modelLoaded = true;
-    console.log('[classifier-local] DeBERTa model loaded successfully');
+    console.log(`[classifier-local] DeBERTa model loaded (${Math.round(require('fs').statSync(modelPath).size / 1024 / 1024)}MB)`);
     return true;
   } catch (err) {
     loadError = err instanceof Error ? err.message : 'Unknown error loading ONNX model';
@@ -156,23 +90,26 @@ export async function localClassifierScan(text: string): Promise<LayerResult> {
   }
 
   try {
-    const vocab = tokenizer.model.vocab;
-    const tokenIds = tokenize(text, vocab);
-    const { inputIds, attentionMask } = padTokens(tokenIds, MAX_LENGTH);
+    // Tokenize using the HuggingFace tokenizer (handles SentencePiece/Unigram correctly)
+    const encoded = tokenizer.encode(text);
+    const ids: number[] = encoded.getIds();
+    const attMask: number[] = encoded.getAttentionMask();
 
-    // Create ONNX tensors
-    const inputIdsTensor = new ort.Tensor('int64', inputIds, [1, MAX_LENGTH]);
-    const attentionMaskTensor = new ort.Tensor('int64', attentionMask, [1, MAX_LENGTH]);
+    // Convert to BigInt64Array for ONNX Runtime
+    const inputIds = new BigInt64Array(ids.map(id => BigInt(id)));
+    const attentionMask = new BigInt64Array(attMask.map(m => BigInt(m)));
 
-    // Run inference
+    // Build feeds
     const feeds: Record<string, any> = {
-      input_ids: inputIdsTensor,
-      attention_mask: attentionMaskTensor,
+      input_ids: new ort.Tensor('int64', inputIds, [1, inputIds.length]),
+      attention_mask: new ort.Tensor('int64', attentionMask, [1, attentionMask.length]),
     };
 
-    // Some models also need token_type_ids
-    const tokenTypeIds = new BigInt64Array(MAX_LENGTH).fill(0n);
-    feeds.token_type_ids = new ort.Tensor('int64', tokenTypeIds, [1, MAX_LENGTH]);
+    // Add token_type_ids if the model expects them
+    if (session.inputNames.includes('token_type_ids')) {
+      const tokenTypeIds = new BigInt64Array(inputIds.length).fill(0n);
+      feeds.token_type_ids = new ort.Tensor('int64', tokenTypeIds, [1, inputIds.length]);
+    }
 
     const results = await session.run(feeds);
 
@@ -205,7 +142,7 @@ export async function localClassifierScan(text: string): Promise<LayerResult> {
         model: 'deberta-v3-base-prompt-injection-v2',
         injectionScore: injectionProb,
         safeScore: probs[0],
-        tokenCount: tokenIds.length,
+        tokenCount: ids.length,
       },
     };
   } catch (err) {
