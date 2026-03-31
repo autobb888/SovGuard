@@ -114,13 +114,8 @@ async function ensureModel(): Promise<boolean> {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     ort = await (Function('return import("onnxruntime-node")')() as Promise<any>);
 
-    // Create inference session with CPU options
-    session = await ort.InferenceSession.create(modelPath, {
-      executionProviders: ['CPUExecutionProvider'],
-      graphOptimizationLevel: 'all',
-      intraOpNumThreads: 2,
-      interOpNumThreads: 1,
-    });
+    // Create inference session — use default CPU backend
+    session = await ort.InferenceSession.create(modelPath);
 
     tokenizer = loadTokenizer(vocabPath);
     modelLoaded = true;
