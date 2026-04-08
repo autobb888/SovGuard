@@ -2,6 +2,7 @@
   "name": "@sovguard/engine",
   "version": "1.0.0",
   "description": "Prompt injection detection and safe message delivery engine for AI agents",
+  "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "exports": {
@@ -31,6 +32,27 @@
     "node": ">=18.0.0"
   },
   "license": "MIT",
+  "author": "SovGuard",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/autobb888/sovguard.git"
+  },
+  "homepage": "https://sovguard.io",
+  "bugs": {
+    "url": "https://github.com/autobb888/sovguard/issues"
+  },
+  "keywords": [
+    "prompt-injection",
+    "ai-security",
+    "llm",
+    "agent",
+    "prompt-guard",
+    "ai-agent",
+    "security",
+    "injection-detection",
+    "canary-tokens",
+    "spotlighting"
+  ],
   "dependencies": {
     "@fastify/cors": "^11.2.0",
     "@fastify/helmet": "^13.0.2",

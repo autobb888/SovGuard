@@ -93,8 +93,8 @@ docker run -p 3100:3100 -e SOVGUARD_API_KEY=your-secret sovguard
 
 | Layer | Scanner | Speed | What It Catches |
 |-------|---------|-------|-----------------|
-| L1 | **Regex** | ~1ms | 110+ patterns: instruction overrides, skeleton key, CSS steganography, log-to-leak, deceptive delight, role-play, DAN, exfiltration, delimiter/ChatML, encoding tricks, financial manipulation |
-| L1+ | **Encoding Decoders** | ~1ms | 9 decoders: Base64, ROT13, hex, Unicode escapes, HTML entities, reverse text, leetspeak, GhostInk (Unicode tags + variation selectors) |
+| L1 | **Regex** | ~1ms | 195+ patterns: instruction overrides, skeleton key, CSS steganography, log-to-leak, deceptive delight, role-play, DAN, exfiltration, delimiter/ChatML, encoding tricks, financial manipulation |
+| L1+ | **Encoding Decoders** | ~1ms | 11 decoders: Base64, Base32, ROT13, hex, Unicode escapes, HTML entities, URL encoding, leetspeak, token-break normalization, GhostInk (Unicode tags + variation selectors) |
 | L2 | **Perplexity** | ~1ms | GCG adversarial suffixes, many-shot jailbreak detection, deceptive delight structural analysis, gibberish text, mixed scripts |
 | L3 | **ML Classifier** | ~50-100ms | Lakera Guard v2 API -- catches semantic jailbreaks, social engineering, refusal bypass. Graceful degradation if no API key. |
 | L4 | **Structured Delivery** | N/A | Wraps messages with randomized data markers (Spotlighting) so agents treat input as data, not instructions |
@@ -110,6 +110,7 @@ docker run -p 3100:3100 -e SOVGUARD_API_KEY=your-secret sovguard
 | **Code** | Cryptocurrency mining, CoinHive, dangerous code patterns |
 | **Financial** | Unauthorized payment addresses, wallet manipulation (BTC, ETH, XMR, LTC) |
 | **Contamination** | Cross-job data leakage via hashed fingerprint comparison |
+| **Toxicity** | Profanity, hate speech, threats, harassment detection |
 
 ### Multi-Turn (cross-message)
 
@@ -228,14 +229,18 @@ sovguard/
 │   │   └── encryption.ts        # AES-256-GCM payload encryption
 │   ├── scanner/
 │   │   ├── index.ts             # Scan orchestrator (L1->L2->L3)
-│   │   ├── regex.ts             # L1: 110+ regex patterns + 9 encoding decoders
+│   │   ├── regex.ts             # L1: 195+ regex patterns + 11 encoding decoders
 │   │   ├── perplexity.ts        # L2: Entropy, GCG, many-shot, deceptive delight
 │   │   ├── classifier.ts        # L3: Lakera Guard v2 ML classifier
-│   │   └── session-scorer.ts    # Multi-turn rolling window scorer
+│   │   ├── classifier-local.ts  # L3: Self-hosted ONNX DeBERTa classifier
+│   │   ├── session-scorer.ts    # Multi-turn rolling window scorer
+│   │   ├── indirect.ts          # Indirect injection heuristics
+│   │   └── topic-rails.ts       # Configurable policy/topic rails
 │   ├── delivery/
 │   │   └── wrap.ts              # L4: Spotlighting message wrapper
 │   ├── canary/
-│   │   └── tokens.ts            # L5: Canary token generation + leak detection
+│   │   ├── tokens.ts            # L5: Canary token generation + leak detection
+│   │   └── store-sqlite.ts      # Persistent canary storage (SQLite)
 │   ├── file/
 │   │   ├── scanner.ts           # L6: Filename + metadata scanner
 │   │   └── content-scanner.ts   # L6: File body text extraction + scanning
@@ -245,7 +250,13 @@ sovguard/
 │   │   ├── urls.ts              # Suspicious URL detection
 │   │   ├── code.ts              # Dangerous code pattern detection
 │   │   ├── financial.ts         # Payment address manipulation
-│   │   └── contamination.ts     # Cross-job data leakage detection
+│   │   ├── contamination.ts     # Cross-job data leakage detection
+│   │   ├── toxicity.ts          # Profanity, hate speech, threat detection
+│   │   └── patterns.ts          # Shared regex patterns
+│   ├── crypto/
+│   │   └── encryption.ts        # AES-256-GCM payload encryption
+│   ├── tenant/
+│   │   └── db.ts                # SQLite setup + migrations
 │   └── monitor/
 │       └── stats.ts             # Scan statistics tracking
 ├── Dockerfile                   # Multi-stage Docker build
@@ -259,10 +270,10 @@ Based on mapping against 112 attacks across 14 categories (PwnClaw corpus):
 
 | Configuration | Catch Rate | Notes |
 |---------------|-----------|-------|
-| L1 + L2 only (no ML) | ~40% | Regex + entropy -- catches obvious attacks |
-| L1 + L2 + L3 (with Lakera) | ~60% | ML adds semantic jailbreak/social engineering coverage |
-| Full stack + multi-turn | ~65% | Rolling scores catch crescendo attacks |
-| Industry average | ~50% | Per PwnClaw benchmarks |
+| L1 + L2 only (no ML) | ~55% | 195+ regex patterns + 11 encoding decoders + perplexity. No external API calls. |
+| L1 + L2 + L3 (with Lakera) | ~75% | Add Lakera Guard ML classifier for neural-level detection. |
+| Full stack + multi-turn | ~80% | All layers including session scoring, canary tokens, and file scanning. |
+| Industry average | ~50% | Typical single-method prompt injection detection. |
 
 ### Honest Limitations
 
