@@ -94,7 +94,7 @@ docker run -p 3100:3100 -e SOVGUARD_API_KEY=your-secret sovguard
 | Layer | Scanner | Speed | What It Catches |
 |-------|---------|-------|-----------------|
 | L1 | **Regex** | ~1ms | 200+ patterns: instruction overrides, skeleton key, CSS steganography, log-to-leak, deceptive delight, role-play, DAN, exfiltration, delimiter/ChatML, encoding tricks, financial manipulation, tool poisoning, memory poisoning, agent impersonation, goal hijacking |
-| L1+ | **Encoding Decoders** | ~1ms | 11 decoders: Base64, Base32, ROT13, hex, Unicode escapes, HTML entities, URL encoding, leetspeak, token-break normalization, GhostInk (Unicode tags + variation selectors) |
+| L1+ | **Encoding Decoders** | ~1ms | 9 decoders: Base64, Base32, ROT13, hex escapes, Unicode escapes, HTML entities, URL encoding, Unicode tags, variation selectors |
 | L2 | **Perplexity** | ~1ms | GCG adversarial suffixes, many-shot jailbreak detection, deceptive delight structural analysis, gibberish text, mixed scripts |
 | L3 | **ML Classifier** | ~50-100ms | Lakera Guard v2 API -- catches semantic jailbreaks, social engineering, refusal bypass. Graceful degradation if no API key. |
 | L4 | **Structured Delivery** | N/A | Wraps messages with randomized data markers (Spotlighting) so agents treat input as data, not instructions |
@@ -229,7 +229,7 @@ sovguard/
 │   │   └── encryption.ts        # AES-256-GCM payload encryption
 │   ├── scanner/
 │   │   ├── index.ts             # Scan orchestrator (L1->L2->L3)
-│   │   ├── regex.ts             # L1: 200+ regex patterns + 11 encoding decoders
+│   │   ├── regex.ts             # L1: 200+ regex patterns + 9 encoding decoders
 │   │   ├── perplexity.ts        # L2: Entropy, GCG, many-shot, deceptive delight
 │   │   ├── classifier.ts        # L3: Lakera Guard v2 ML classifier
 │   │   ├── classifier-local.ts  # L3: Self-hosted ONNX DeBERTa classifier
@@ -270,7 +270,7 @@ Based on mapping against 112 attacks across 14 categories (PwnClaw corpus):
 
 | Configuration | Catch Rate | Notes |
 |---------------|-----------|-------|
-| L1 + L2 only (no ML) | ~55% | 200+ regex patterns + 11 encoding decoders + perplexity. No external API calls. |
+| L1 + L2 only (no ML) | ~55% | 200+ regex patterns + 9 encoding decoders + perplexity. No external API calls. |
 | L1 + L2 + L3 (with Lakera) | ~75% | Add Lakera Guard ML classifier for neural-level detection. |
 | Full stack + multi-turn | ~80% | All layers including session scoring, canary tokens, and file scanning. |
 | Industry average | ~50% | Typical single-method prompt injection detection. |
