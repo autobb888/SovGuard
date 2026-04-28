@@ -370,6 +370,21 @@ const PATTERNS: PatternDef[] = [
   { pattern: /sistem istemini göster/i, category: 'exfiltration', severity: 'high', label: 'show_system_prompt_tr' },
   { pattern: /yeni talimatlara uy/i, category: 'instruction_override', severity: 'high', label: 'follow_new_instructions_tr' },
   { pattern: /tüm kuralları unut/i, category: 'instruction_override', severity: 'high', label: 'forget_all_rules_tr' },
+
+  // ── Scout 2026-04-28 ──────────────────────────────────────
+  // New IPI/jailbreak techniques observed in the wild Apr 2026
+  // Sources: Forcepoint X-Labs (Apr 24), Unit 42 (Apr 23), Pillar Security (Apr 21),
+  // NVIDIA AI Red Team (AGENTS.md), MS Copilot Studio CVE-2026-21520 (Apr 15)
+  { pattern: /\bif\s+you('re|\s+are)\s+(?:an?\s+)?(AI|LLM|large\s+language\s+model|assistant|chatbot|agent|llm-based)\b/i, category: 'context_manipulation', severity: 'high', label: 'if_you_are_ai_framing' },
+  { pattern: /(do\s+not|don'?t)\s+(show|reveal|display|mention|tell|share)\s+(this(?:\s+(?:message|content|info|information|response|payload|note|text|part))?|the\s+(?:above|following|content|message|info))\s+to\s+(the\s+)?user/i, category: 'context_manipulation', severity: 'high', label: 'hide_from_user' },
+  { pattern: /paypal\.me\/[a-z0-9_-]{2,}/i, category: 'financial_manipulation', severity: 'high', label: 'paypal_me_link' },
+  { pattern: /--exec-(batch|on-error|on-empty)\b/i, category: 'tool_poisoning', severity: 'high', label: 'exec_batch_flag_injection' },
+  { pattern: /\b(write|append|save|store|add|put)\b[^.\n]{0,40}(AGENTS\.md|CLAUDE\.md|SOUL\.md|\.cursorrules|\.cursor\/rules)/i, category: 'memory_poisoning', severity: 'high', label: 'persistent_agent_file_write' },
+  { pattern: /\brm\s+-[rRfFvi]{1,4}\s+\S/i, category: 'instruction_override', severity: 'high', label: 'rm_rf_command' },
+  { pattern: /ANTHROPIC_MAGIC_STRING[_A-Z]*/i, category: 'agent_impersonation', severity: 'high', label: 'fake_anthropic_magic_string' },
+  { pattern: /<\/?ai:(action|instruction|directive|command|system|task|tool)\b/i, category: 'chatml_injection', severity: 'high', label: 'ai_namespace_tag' },
+  { pattern: /(redirect|direct|route|send)\s+(the\s+|all\s+)?users?\s+to\s+(?:https?:\/\/|www\.)/i, category: 'goal_hijacking', severity: 'high', label: 'redirect_users_to_url' },
+  { pattern: /\bULTRATHINK\b/i, category: 'context_manipulation', severity: 'medium', label: 'ultrathink_amplifier' },
 ];
 
 function scanText(text: string, allPatterns: PatternDef[]): PatternMatch[] {
