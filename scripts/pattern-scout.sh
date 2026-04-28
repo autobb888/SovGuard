@@ -10,6 +10,10 @@
 # ──────────────────────────────────────────────────────────────
 set -euo pipefail
 
+# Cron and other non-login shells start with a minimal PATH. Make sure the
+# user-local node + claude installs are reachable before any preflight check.
+export PATH="$HOME/.local/node/bin:$HOME/.local/bin:$PATH"
+
 REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 DATE="$(date +%Y-%m-%d)"
 BRANCH="scout/${DATE}"
@@ -139,7 +143,7 @@ fi
 
 # ── Run tests one more time to be sure ───────────────────────
 log "Running test suite..."
-if ! npx tsx --test test/**/*.test.ts 2>&1 | tee -a "$LOG_FILE"; then
+if ! ./node_modules/.bin/tsx --test test/**/*.test.ts 2>&1 | tee -a "$LOG_FILE"; then
   log "ERROR: Tests failed — discarding changes"
   git checkout "$MAIN_BRANCH" --quiet
   git branch -D "$BRANCH" 2>/dev/null || true
