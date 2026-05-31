@@ -10,6 +10,7 @@ import { scanCode } from './code.js';
 import { scanFinancial } from './financial.js';
 import { scanContamination } from './contamination.js';
 import { scanToxicity } from './toxicity.js';
+import { scanEgress } from './egress.js';
 
 const ACTION_SCORES: Record<string, number> = {
   pass: 0,
@@ -48,6 +49,7 @@ export function scanOutput(
     ...scanFinancial(message, context.whitelistedAddresses),
     ...scanContamination(message, context.jobId, context.jobFingerprints),
     ...scanToxicity(message),
+    ...scanEgress(message, { canaryToken: context.canaryToken }),
   ];
 
   const score = allFlags.length === 0
@@ -71,3 +73,4 @@ export { scanCode } from './code.js';
 export { scanFinancial } from './financial.js';
 export { scanContamination } from './contamination.js';
 export { scanToxicity } from './toxicity.js';
+export { scanEgress } from './egress.js';

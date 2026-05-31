@@ -200,6 +200,13 @@ const PATTERNS: PatternDef[] = [
   { pattern: /transfer\s+(all\s+)?(funds?|balance|payment)/i, category: 'financial_manipulation', severity: 'high', label: 'transfer_funds' },
   { pattern: /change\s+(the\s+)?(wallet|address|recipient|payment)/i, category: 'financial_manipulation', severity: 'high', label: 'change_wallet' },
 
+  // ── NFT/Asset Trust Elevation (Grok/Bankrbot vector) ───────
+  // Attacker airdrops an asset (NFT, token, badge) and instructs the agent
+  // that holding/receiving it grants elevated permissions or bypasses controls.
+  { pattern: /\b(this|the|incoming|received|special|airdropped|new)\s+(nft|airdrop)\b[^.\n]{0,80}?\b(grants?|unlocks?|gives?|enables?|authorizes?|allows?|provides?)\b[^.\n]{0,40}?\b(transfer|wallet|permission|admin|root|elevated|unrestricted|bypass|safety|filter|guardrail|signing|approval|restriction|capabilit|privileg)/i, category: 'context_manipulation', severity: 'high', label: 'nft_permission_unlock' },
+  { pattern: /\b(holding|owning|possessing)\s+(this|the|that|any)\s+(nft|token|badge|asset|coin|credential|key)\b[^.\n]{0,60}?\b(unlocks?|grants?|allows?|enables?|authorizes?|gives?|elevates?|provides?)\b[^.\n]{0,40}?\b(unrestricted|elevated|admin|full|bypass|root|unlimited|special|transfer|wallet|permission|signing|approval)/i, category: 'context_manipulation', severity: 'high', label: 'asset_grants_capability' },
+  { pattern: /\bbearer\s+of\s+this\s+(nft|token|badge|asset|coin|key|credential)\b[^.\n]{0,40}\b(authorized|allowed|permitted|exempt|granted|trusted)\b/i, category: 'context_manipulation', severity: 'high', label: 'bearer_authority' },
+
   // ── Tool/Code Injection (P2-SC-REGEX-1) ────────────────────
   { pattern: /\b(run|execute)\s+(the\s+)?(command|script|code)\s*:/i, category: 'instruction_override', severity: 'high', label: 'tool_command_injection' },
   { pattern: /\beval\s*\(\s*[^)\s]/i, category: 'instruction_override', severity: 'high', label: 'eval_call' },
@@ -413,12 +420,13 @@ export function regexScan(text: string, extraPatterns?: PatternDef[]): LayerResu
   // Scan original text
   const originalMatches = scanText(text, allPatterns);
 
-  // Scan with normalization strategies (including full-width + homoglyphs)
+  // Scan with normalization strategies (zero-width strip, NFKC + confusables).
+  // `composed` chains them so layered obfuscation collapses to one canonical form.
   const stripped = normalizeStrip(text);
   const spaced = normalizeSpace(text);
-  const fullWidth = normalizeFullWidth(text);
-  const homoglyphed = normalizeHomoglyphs(fullWidth !== text ? fullWidth : text);
-  const variants = new Set([stripped, spaced, fullWidth, homoglyphed]);
+  const confusables = normalizeConfusables(text);
+  const composed = normalizeForDetection(text);
+  const variants = new Set([stripped, spaced, confusables, composed]);
   variants.delete(text); // don't re-scan original
   const normalizedMatches: PatternMatch[] = [];
   for (const variant of variants) {
@@ -471,6 +479,23 @@ export function regexScan(text: string, extraPatterns?: PatternDef[]): LayerResu
   // Also check ROT13-decoded content (GAP-4: simple cipher decode)
   const rot13Matches = scanRot13(text, allPatterns);
   mergedMatches.push(...rot13Matches);
+
+  // Morse / Braille / numeric-ASCII / reverse / acrostic decoders
+  for (const m of scanMorse(text, allPatterns)) {
+    if (!seenLabels.has(m.pattern)) { seenLabels.add(m.pattern); mergedMatches.push(m); }
+  }
+  for (const m of scanBraille(text, allPatterns)) {
+    if (!seenLabels.has(m.pattern)) { seenLabels.add(m.pattern); mergedMatches.push(m); }
+  }
+  for (const m of scanNumericAscii(text, allPatterns)) {
+    if (!seenLabels.has(m.pattern)) { seenLabels.add(m.pattern); mergedMatches.push(m); }
+  }
+  for (const m of scanReversed(text, allPatterns)) {
+    if (!seenLabels.has(m.pattern)) { seenLabels.add(m.pattern); mergedMatches.push(m); }
+  }
+  for (const m of scanAcrostic(text, allPatterns)) {
+    if (!seenLabels.has(m.pattern)) { seenLabels.add(m.pattern); mergedMatches.push(m); }
+  }
 
   // Invisible payload reconstruction: decode hidden Unicode steganography
   const tagPayload = decodeUnicodeTags(text);
@@ -579,6 +604,23 @@ export function normalizeLeetspeak(text: string): string {
     '7': 't', '@': 'a', '$': 's', '!': 'i',
   };
   return text.replace(/[013457@$!]/g, (ch) => leet[ch] || ch);
+}
+
+/**
+ * Cumulative normalization pipeline. The other normalizers each undo ONE
+ * obfuscation applied to the raw text, so stacked tricks (e.g. fullwidth +
+ * leetspeak, or homoglyph + leetspeak) survive because no single pass yields
+ * the canonical attack string. This composes the safe, FP-resistant transforms
+ * in sequence — strip invisibles → fold confusables/NFKC/homoglyphs → undo
+ * leetspeak → collapse whitespace — so layered obfuscation collapses to one
+ * canonical form. Fed to both the regex layer and the ML classifier.
+ *
+ * Intra-word de-spacing is deliberately excluded (it would merge legitimate
+ * words and create false positives); single-char split attacks are handled by
+ * the perplexity layer instead.
+ */
+export function normalizeForDetection(text: string): string {
+  return normalizeLeetspeak(normalizeConfusables(normalizeStrip(text)));
 }
 
 /**
@@ -716,6 +758,271 @@ export function decodeVariationSelectors(text: string): string {
   const printable = bytes.filter(b => b >= 0x20 && b <= 0x7E);
   if (printable.length < 3) return '';
   return String.fromCharCode(...printable);
+}
+
+// ── Confusables (NFKC + visual lookalikes) ─────────────────
+
+const SMALL_CAPS_PHONETIC: Record<string, string> = {
+  'ᴀ': 'a', 'ᴄ': 'c', 'ᴅ': 'd', 'ᴇ': 'e',
+  'ᴊ': 'j', 'ᴋ': 'k', 'ᴌ': 'l', 'ᴍ': 'm',
+  'ᴏ': 'o', 'ᴘ': 'p', 'ᴛ': 't', 'ᴜ': 'u',
+  'ᴠ': 'v', 'ᴡ': 'w', 'ᴢ': 'z',
+  'ʙ': 'b', 'ʜ': 'h', 'ɪ': 'i', 'ɴ': 'n',
+  'ʀ': 'r', 'ʏ': 'y', 'ᵻ': 'i', 'ǀ': 'l',
+  'ꜱ': 's', 'ꞯ': 'q', 'ᷛ': 'g', 'ᶶ': 'u',
+  'ᴬ': 'A', 'ᴮ': 'B', 'ᴰ': 'D', 'ᴱ': 'E',
+  'ᴳ': 'G', 'ᴴ': 'H', 'ᴵ': 'I', 'ᴶ': 'J',
+  'ᴷ': 'K', 'ᴸ': 'L', 'ᴹ': 'M', 'ᴺ': 'N',
+  'ᴼ': 'O', 'ᴾ': 'P', 'ᴿ': 'R', 'ᵀ': 'T',
+  'ᵁ': 'U', 'ᵂ': 'W',
+};
+
+/**
+ * Normalize Unicode confusables to ASCII. Folds:
+ *   - Mathematical Alphanumeric Symbols (𝐀-𝐳, 𝐴-𝑧, 𝓐-𝔃, 𝔄-𝔷, 𝔸-𝕫, 𝕬-𝖟, 𝖠-𝗓, 𝗔-𝘇, 𝘈-𝘻, 𝘼-𝙯, 𝙰-𝚣)
+ *   - Fullwidth Latin (Ａ-ｚ)
+ *   - Circled / parenthesized letters (Ⓐ-ⓩ, ⒜-⒵)
+ *   - Compatibility ligatures (ﬁ → fi)
+ *   - Cyrillic / Greek visual homoglyphs (а → a, α → a)
+ *   - Phonetic-block small caps (ᴀ → a)
+ * Combines NFKC compatibility decomposition with explicit homoglyph maps for
+ * scripts NFKC does not fold across.
+ */
+export function normalizeConfusables(text: string): string {
+  let result = text.normalize('NFKC');
+  result = result.replace(/[̀-ͯ]/g, '');
+  result = normalizeHomoglyphs(result);
+  result = result.replace(/[ǀɪɴʀʏʙʜᴀ-ᵂᵻᶶᷛꜱꞯ]/g,
+    (ch) => SMALL_CAPS_PHONETIC[ch] || ch);
+  return result;
+}
+
+// ── Morse code ─────────────────────────────────────────────
+
+const MORSE_MAP: Record<string, string> = {
+  '.-': 'a', '-...': 'b', '-.-.': 'c', '-..': 'd', '.': 'e', '..-.': 'f',
+  '--.': 'g', '....': 'h', '..': 'i', '.---': 'j', '-.-': 'k', '.-..': 'l',
+  '--': 'm', '-.': 'n', '---': 'o', '.--.': 'p', '--.-': 'q', '.-.': 'r',
+  '...': 's', '-': 't', '..-': 'u', '...-': 'v', '.--': 'w', '-..-': 'x',
+  '-.--': 'y', '--..': 'z',
+  '-----': '0', '.----': '1', '..---': '2', '...--': '3', '....-': '4',
+  '.....': '5', '-....': '6', '--...': '7', '---..': '8', '----.': '9',
+};
+
+/**
+ * Decode ITU Morse. Letters separated by single spaces; words by '/' or 3+ spaces.
+ * Unknown tokens drop to empty (lossy decode is fine — we re-scan output).
+ */
+export function decodeMorse(text: string): string {
+  const words = text.split(/\s*\/\s*|\s{3,}/);
+  return words
+    .map(word =>
+      word.trim().split(/\s+/)
+        .map(token => MORSE_MAP[token] || '')
+        .join('')
+    )
+    .filter(w => w.length > 0)
+    .join(' ');
+}
+
+function scanMorse(text: string, patterns: PatternDef[]): PatternMatch[] {
+  // Run of 6+ Morse-letter tokens (dots/dashes) separated by spaces or '/'.
+  const morseRunRegex = /(?:[.\-]+(?:\s+\/\s+|\s+)){5,}[.\-]+/g;
+  const results: PatternMatch[] = [];
+  let m;
+  while ((m = morseRunRegex.exec(text)) !== null) {
+    const decoded = decodeMorse(m[0]);
+    if (decoded.replace(/\s/g, '').length < 6) continue;
+    for (const def of patterns) {
+      const pm = def.pattern.exec(decoded);
+      if (pm) {
+        results.push({
+          pattern: `morse:${def.label}`,
+          category: def.category,
+          severity: def.severity,
+          matched: `[morse] ${pm[0]}`,
+        });
+      }
+    }
+  }
+  return results;
+}
+
+// ── Braille (Unicode Braille Patterns block) ───────────────
+
+const BRAILLE_MAP: Record<string, string> = {
+  '⠁': 'a', '⠃': 'b', '⠉': 'c', '⠙': 'd', '⠑': 'e',
+  '⠋': 'f', '⠛': 'g', '⠓': 'h', '⠊': 'i', '⠚': 'j',
+  '⠅': 'k', '⠇': 'l', '⠍': 'm', '⠝': 'n', '⠕': 'o',
+  '⠏': 'p', '⠟': 'q', '⠗': 'r', '⠎': 's', '⠞': 't',
+  '⠥': 'u', '⠧': 'v', '⠺': 'w', '⠭': 'x', '⠽': 'y',
+  '⠵': 'z',
+};
+
+/**
+ * Decode Grade-1 English Braille from the Unicode Braille Patterns block (U+2800-U+28FF).
+ * Non-Braille characters pass through unchanged.
+ */
+export function decodeBraille(text: string): string {
+  return [...text].map(c => {
+    const cp = c.codePointAt(0) ?? 0;
+    if (cp >= 0x2800 && cp <= 0x28FF) {
+      return BRAILLE_MAP[c] || '';
+    }
+    return c;
+  }).join('');
+}
+
+function scanBraille(text: string, patterns: PatternDef[]): PatternMatch[] {
+  // Need at least 6 Braille letter chars to bother decoding
+  let brailleCount = 0;
+  for (const c of text) {
+    const cp = c.codePointAt(0) ?? 0;
+    if (cp >= 0x2800 && cp <= 0x28FF) brailleCount++;
+  }
+  if (brailleCount < 6) return [];
+
+  const decoded = decodeBraille(text);
+  if (decoded.replace(/\s/g, '').length < 6) return [];
+
+  const results: PatternMatch[] = [];
+  for (const def of patterns) {
+    const pm = def.pattern.exec(decoded);
+    if (pm) {
+      results.push({
+        pattern: `braille:${def.label}`,
+        category: def.category,
+        severity: def.severity,
+        matched: `[braille] ${pm[0]}`,
+      });
+    }
+  }
+  return results;
+}
+
+// ── Numeric ASCII (decimal / binary char codes) ────────────
+
+/**
+ * Decode space-separated numeric char codes to text.
+ * Auto-detects: 8-digit binary, or 2-3 digit decimal in [32,126].
+ * Returns empty string if input doesn't look like a clean numeric run.
+ */
+export function decodeNumericAscii(text: string): string {
+  const tokens = text.trim().split(/\s+/);
+  if (tokens.length < 4) return '';
+
+  if (tokens.every(t => /^[01]{8}$/.test(t))) {
+    const bytes = tokens.map(t => parseInt(t, 2));
+    if (bytes.every(b => b >= 32 && b <= 126)) {
+      return String.fromCharCode(...bytes);
+    }
+  }
+
+  if (tokens.every(t => /^\d{2,3}$/.test(t))) {
+    const bytes = tokens.map(t => parseInt(t, 10));
+    if (bytes.every(b => b >= 32 && b <= 126)) {
+      return String.fromCharCode(...bytes);
+    }
+  }
+
+  return '';
+}
+
+function scanNumericAscii(text: string, patterns: PatternDef[]): PatternMatch[] {
+  const results: PatternMatch[] = [];
+
+  // Decimal: 5+ space-separated 2-3 digit numbers
+  const decRunRegex = /\b\d{2,3}(?:\s+\d{2,3}){4,}\b/g;
+  let m;
+  while ((m = decRunRegex.exec(text)) !== null) {
+    const decoded = decodeNumericAscii(m[0]);
+    if (decoded.length < 5) continue;
+    for (const def of patterns) {
+      const pm = def.pattern.exec(decoded);
+      if (pm) {
+        results.push({
+          pattern: `numeric_ascii:${def.label}`,
+          category: def.category,
+          severity: def.severity,
+          matched: `[numeric] ${pm[0]}`,
+        });
+      }
+    }
+  }
+
+  // Binary: 5+ space-separated 8-bit groups
+  const binRunRegex = /\b[01]{8}(?:\s+[01]{8}){4,}\b/g;
+  while ((m = binRunRegex.exec(text)) !== null) {
+    const decoded = decodeNumericAscii(m[0]);
+    if (decoded.length < 5) continue;
+    for (const def of patterns) {
+      const pm = def.pattern.exec(decoded);
+      if (pm) {
+        results.push({
+          pattern: `binary_ascii:${def.label}`,
+          category: def.category,
+          severity: def.severity,
+          matched: `[binary] ${pm[0]}`,
+        });
+      }
+    }
+  }
+
+  return results;
+}
+
+// ── Reverse text ───────────────────────────────────────────
+
+function scanReversed(text: string, patterns: PatternDef[]): PatternMatch[] {
+  if (text.length < 20) return [];
+  const reversed = [...text].reverse().join('');
+  const results: PatternMatch[] = [];
+  for (const def of patterns) {
+    if (def.severity !== 'high') continue;
+    const revMatch = def.pattern.exec(reversed);
+    const origMatch = def.pattern.exec(text);
+    if (revMatch && !origMatch) {
+      results.push({
+        pattern: `reverse:${def.label}`,
+        category: def.category,
+        severity: def.severity,
+        matched: `[reverse] ${revMatch[0]}`,
+      });
+    }
+  }
+  return results;
+}
+
+// ── Acrostic (first char of each line) ─────────────────────
+
+function scanAcrostic(text: string, patterns: PatternDef[]): PatternMatch[] {
+  const lines = text.split('\n');
+  if (lines.length < 5) return [];
+
+  const firstChars: string[] = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.length === 0) continue;
+    firstChars.push(trimmed[0]);
+  }
+  if (firstChars.length < 5) return [];
+
+  const acrostic = firstChars.join('').toLowerCase();
+
+  const results: PatternMatch[] = [];
+  for (const def of patterns) {
+    if (def.severity !== 'high') continue;
+    const m = def.pattern.exec(acrostic);
+    if (m) {
+      results.push({
+        pattern: `acrostic:${def.label}`,
+        category: def.category,
+        severity: def.severity,
+        matched: `[acrostic] ${m[0]}`,
+      });
+    }
+  }
+  return results;
 }
 
 export { PATTERNS, type PatternDef };

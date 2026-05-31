@@ -26,10 +26,12 @@
     "scout:dry": "SCOUT_DRY_RUN=1 bash scripts/pattern-scout.sh",
     "pentest": "tsx pentest/run.ts",
     "pentest:json": "tsx pentest/run.ts --json",
-    "pentest:failures": "tsx pentest/run.ts --failures-only"
+    "pentest:failures": "tsx pentest/run.ts --failures-only",
+    "eval": "tsx pentest/eval/run.ts",
+    "eval:json": "tsx pentest/eval/run.ts --json"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   },
   "license": "MIT",
   "author": "SovGuard",

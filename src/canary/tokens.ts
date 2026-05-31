@@ -198,8 +198,15 @@ function normalizeForCanary(s: string): string {
 /**
  * Check if a response text contains any known canary token.
  * Returns the sessionId if a leak is detected.
+ *
+ * `tenantId` scopes a no-sessionId scan to a single tenant's sessions. Cloud
+ * mode stores tokens namespaced as `${tenantId}:${sessionId}` and a shared
+ * store holds every tenant's tokens, so an un-scoped "check all" would let one
+ * tenant detect/leak another tenant's canary (C1). When `tenantId` is supplied,
+ * only keys under that tenant's prefix are scanned. When it is omitted (the
+ * single-tenant SDK / self-hosted server), behaviour is unchanged.
  */
-export function checkLeak(text: string, sessionId?: string): { leaked: boolean; token?: string; sessionId?: string } {
+export function checkLeak(text: string, sessionId?: string, tenantId?: string): { leaked: boolean; token?: string; sessionId?: string } {
   const normalizedText = normalizeForCanary(text);
 
   if (sessionId) {
@@ -210,8 +217,10 @@ export function checkLeak(text: string, sessionId?: string): { leaked: boolean; 
     return { leaked: false };
   }
 
-  // Check all tokens
+  // No specific session: scan tokens, scoped to the calling tenant when known.
+  const prefix = tenantId !== undefined ? `${tenantId}:` : undefined;
   for (const [sid, canary] of store.entries()) {
+    if (prefix !== undefined && !sid.startsWith(prefix)) continue;
     if (normalizedText.includes(normalizeForCanary(canary.token))) {
       return { leaked: true, token: canary.token, sessionId: sid };
     }

@@ -22,8 +22,8 @@ describe('Structured Delivery', () => {
   it('should wrap safe messages with randomized data markers', () => {
     const result = wrapMessage('Can you make the logo bigger?', safeScan, { role: 'buyer' });
     // Should have randomized delimiters (USER_DATA_xxxx_START/END)
-    assert.ok(/\[USER_DATA_[a-f0-9]{4}_START\]/.test(result.formatted), 'Should have randomized start delimiter');
-    assert.ok(/\[USER_DATA_[a-f0-9]{4}_END\]/.test(result.formatted), 'Should have randomized end delimiter');
+    assert.ok(/\[USER_DATA_[a-f0-9]{16}_START\]/.test(result.formatted), 'Should have randomized start delimiter');
+    assert.ok(/\[USER_DATA_[a-f0-9]{16}_END\]/.test(result.formatted), 'Should have randomized end delimiter');
     assert.ok(result.formatted.includes('Can you make the logo bigger?'));
     assert.ok(result.formatted.includes('role="buyer"'));
     assert.ok(result.formatted.includes('classification="safe"'));
@@ -34,18 +34,18 @@ describe('Structured Delivery', () => {
   it('should use different delimiters per call (P2-SC-WRAP-1)', () => {
     const r1 = wrapMessage('test1', safeScan);
     const r2 = wrapMessage('test2', safeScan);
-    const match1 = r1.formatted.match(/USER_DATA_([a-f0-9]{4})_START/);
-    const match2 = r2.formatted.match(/USER_DATA_([a-f0-9]{4})_START/);
+    const match1 = r1.formatted.match(/USER_DATA_([a-f0-9]{16})_START/);
+    const match2 = r2.formatted.match(/USER_DATA_([a-f0-9]{16})_START/);
     assert.ok(match1 && match2, 'Both should have nonce delimiters');
     // They could theoretically collide but very unlikely with 65536 possibilities
     // Just verify format is correct
-    assert.ok(match1[1].length === 4);
-    assert.ok(match2[1].length === 4);
+    assert.ok(match1[1].length === 16);
+    assert.ok(match2[1].length === 16);
   });
 
   it('should reference randomized delimiters in safety rules', () => {
     const result = wrapMessage('test', safeScan);
-    const match = result.formatted.match(/USER_DATA_([a-f0-9]{4})_START/);
+    const match = result.formatted.match(/USER_DATA_([a-f0-9]{16})_START/);
     assert.ok(match);
     const nonce = match[1];
     // Rules should reference the same nonce
@@ -83,7 +83,7 @@ describe('Structured Delivery', () => {
 
   it('should place safety rules AFTER user content', () => {
     const result = wrapMessage('Hello', safeScan);
-    const dataEndMatch = result.formatted.match(/\[USER_DATA_[a-f0-9]{4}_END\]/);
+    const dataEndMatch = result.formatted.match(/\[USER_DATA_[a-f0-9]{16}_END\]/);
     assert.ok(dataEndMatch);
     const dataEnd = result.formatted.indexOf(dataEndMatch[0]);
     const rulesStart = result.formatted.indexOf('<sovguard_rules>');

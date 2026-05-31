@@ -29,6 +29,17 @@ if ! command -v claude &>/dev/null; then
   exit 1
 fi
 
+# The test gate below is the only thing standing between AI-generated patterns
+# and a commit. If the test runner isn't even on PATH the gate can't protect
+# us, so require it up front and fail closed (root cause of the 2026-04-28
+# "npx: command not found" run that still produced a commit).
+for tool in node npx git; do
+  if ! command -v "$tool" &>/dev/null; then
+    log "ERROR: required tool '$tool' not found in PATH — refusing to run (cannot verify generated patterns)"
+    exit 1
+  fi
+done
+
 if ! git diff --quiet HEAD 2>/dev/null; then
   log "ERROR: working tree is dirty — commit or stash first"
   exit 1
@@ -115,14 +126,17 @@ PROMPT="${PROMPT//\$\{DATE\}/$DATE}"
 
 log "Starting Claude Code scout run..."
 
+# Disable errexit around the pipeline so we can capture claude's real exit
+# status (PIPESTATUS[0]) instead of tee's, and handle failure gracefully.
+set +e
 claude -p "$PROMPT" \
   --allowedTools "WebSearch Grep Glob Read Edit Bash(npx tsx --test*) Bash(git diff*) Bash(wc*)" \
   --max-turns 30 \
   --verbose 2>&1 | tee -a "$LOG_FILE"
+CLAUDE_EXIT=${PIPESTATUS[0]}
+set -e
 
-CLAUDE_EXIT=$?
-
-if [ $CLAUDE_EXIT -ne 0 ]; then
+if [ "$CLAUDE_EXIT" -ne 0 ]; then
   log "ERROR: Claude Code exited with code ${CLAUDE_EXIT}"
   git checkout "$MAIN_BRANCH" --quiet
   git branch -D "$BRANCH" 2>/dev/null || true
@@ -138,9 +152,14 @@ if git diff --quiet HEAD; then
 fi
 
 # ── Run tests one more time to be sure ───────────────────────
-log "Running test suite..."
-if ! npx tsx --test test/**/*.test.ts 2>&1 | tee -a "$LOG_FILE"; then
-  log "ERROR: Tests failed — discarding changes"
+# Use the canonical `npm test` (not a bare `**` glob that needs globstar) and
+# read the test runner's OWN exit via PIPESTATUS[0] — `tee` always exits 0, so
+# checking the pipeline status would let a failed/un-runnable suite slip through.
+log "Running test suite (npm test)..."
+npm test 2>&1 | tee -a "$LOG_FILE"
+TEST_EXIT=${PIPESTATUS[0]}
+if [ "$TEST_EXIT" -ne 0 ]; then
+  log "ERROR: Tests failed (exit ${TEST_EXIT}) — discarding changes"
   git checkout "$MAIN_BRANCH" --quiet
   git branch -D "$BRANCH" 2>/dev/null || true
   exit 1
@@ -156,7 +175,7 @@ if [ "$DRY_RUN" = "1" ]; then
   exit 0
 fi
 
-# ── Commit & PR ──────────────────────────────────────────────
+# ── Commit (local only) ──────────────────────────────────────
 git add src/scanner/regex.ts test/
 git commit -m "$(cat <<EOF
 feat(scanner): pattern scout update ${DATE}
@@ -168,6 +187,21 @@ Co-Authored-By: Claude Code Scout <noreply@anthropic.com>
 EOF
 )"
 
+# ── Push & PR are OPT-IN ──────────────────────────────────────
+# AI-generated detection logic must never reach the remote (and therefore can
+# never be auto-merged) without an explicit human decision. By default we leave
+# the commit on the local branch for review. Set SCOUT_AUTO_PR=1 to push + open
+# a PR. Even then, scout PRs MUST require human approval + green CI before merge
+# (enforce via branch protection — the script never merges).
+if [ "${SCOUT_AUTO_PR:-0}" != "1" ]; then
+  log "Committed to local branch ${BRANCH}. Review it, then push manually:"
+  log "    git push -u origin ${BRANCH} && gh pr create --base ${MAIN_BRANCH} --head ${BRANCH}"
+  log "(Set SCOUT_AUTO_PR=1 to push + open a PR automatically. Auto-merge is never enabled.)"
+  git checkout "$MAIN_BRANCH" --quiet
+  log "Done (no PR created)."
+  exit 0
+fi
+
 git push -u origin "$BRANCH"
 
 # Extract summary from log if available
@@ -177,6 +211,8 @@ PR_URL=$(gh pr create \
   --title "feat(scanner): pattern scout — ${DATE}" \
   --body "$(cat <<EOF
 ## Pattern Scout — ${DATE}
+
+> ⚠️ AI-generated from web research. **Requires human approval + green CI before merge — do not auto-merge.**
 
 Automated daily scan for new prompt injection techniques.
 

@@ -45,6 +45,11 @@ export interface ScanResult {
   flags: string[];
   layers: LayerResult[];
   scannedAt: number;
+  /** True if a layer that was supposed to run could not (e.g. ML model/API
+   * unavailable), meaning detection coverage was reduced for this scan. */
+  degraded?: boolean;
+  /** Names of the layers that were unavailable/errored when degraded. */
+  degradedLayers?: string[];
 }
 
 // ─── Delivery Types ──────────────────────────────────────────────
@@ -126,6 +131,8 @@ export interface OutputScanContext {
   agentPlatformId?: string;
   /** P2-OUT-3: Addresses to whitelist in financial scanner (e.g., job's payment address) */
   whitelistedAddresses?: Set<string>;
+  /** Session canary phrase — if the output leaks it, egress flags exfiltration. */
+  canaryToken?: string;
 }
 
 export interface OutputScanResult {
@@ -140,7 +147,7 @@ export interface OutputScanResult {
 export interface OutputFlag {
   type: 'pii_detected' | 'suspicious_url' | 'malicious_code' |
         'cross_contamination' | 'financial_manipulation' | 'agent_exfiltration' | 'data_uri' |
-        'toxicity';
+        'toxicity' | 'injection_success';
   severity: 'low' | 'medium' | 'high' | 'critical';
   detail: string;
   evidence: string;
@@ -158,6 +165,8 @@ export interface SovGuardConfig {
   enablePerplexity?: boolean;
   /** Enable ML classifier (requires LAKERA_API_KEY or ONNX model). Default: true */
   enableClassifier?: boolean;
+  /** Enable semantic similarity layer (requires the embedding ONNX model). Default: true */
+  enableSemantic?: boolean;
   /** Lakera API key for ML classification */
   lakeraApiKey?: string;
   /** Classifier mode: 'local' (self-hosted ONNX), 'lakera' (API), 'auto' (local if available, else lakera). Default: 'auto' */

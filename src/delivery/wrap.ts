@@ -8,10 +8,13 @@ import { randomBytes } from 'crypto';
 import type { Classification, ScanResult, WrapOptions, WrappedMessage } from '../types.js';
 
 /**
- * Generate a random 4-char hex nonce for delimiter randomization.
+ * Generate a random 16-char hex (64-bit) nonce for delimiter randomization.
+ * 64 bits makes the per-call delimiter infeasible to guess or enumerate — an
+ * attacker can't inject the matching closing delimiter to break out of the data
+ * region (16 bits / 4 hex chars was small enough to brute-force across calls).
  */
 function generateNonce(): string {
-  return randomBytes(2).toString('hex');
+  return randomBytes(8).toString('hex');
 }
 
 /**

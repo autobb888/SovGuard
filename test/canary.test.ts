@@ -55,6 +55,27 @@ describe('Canary Tokens', () => {
     assert.equal(result.sessionId, 's1');
   });
 
+  // ── Multi-tenant isolation (C1: cross-tenant canary disclosure) ──
+  it('should NOT detect another tenant\'s canary when scanning by tenant scope', () => {
+    // Cloud mode stores tokens namespaced as `${tenantId}:${sessionId}`.
+    generateToken('tenantA:s1');
+    const victim = generateToken('tenantB:s1');
+    // Tenant A submits a response containing tenant B's token, with no sessionId.
+    const result = checkLeak(`leaked phrase: ${victim.token}`, undefined, 'tenantA');
+    assert.equal(result.leaked, false, 'tenant A must not be able to detect tenant B\'s canary');
+    assert.equal(result.token, undefined);
+    assert.equal(result.sessionId, undefined);
+  });
+
+  it('should still detect a leak across the calling tenant\'s own sessions', () => {
+    const a1 = generateToken('tenantA:s1');
+    generateToken('tenantA:s2');
+    generateToken('tenantB:s1');
+    const result = checkLeak(`the answer is ${a1.token}`, undefined, 'tenantA');
+    assert.equal(result.leaked, true);
+    assert.equal(result.sessionId, 'tenantA:s1');
+  });
+
   it('should retrieve token by session', () => {
     const original = generateToken('session-1');
     const retrieved = getToken('session-1');

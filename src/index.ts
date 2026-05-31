@@ -62,8 +62,8 @@ export class SovGuardEngine {
   /**
    * Check an agent's response for canary token leaks.
    */
-  checkCanary(agentResponse: string, sessionId?: string): CanaryCheckResult {
-    const result = checkLeak(agentResponse, sessionId);
+  checkCanary(agentResponse: string, sessionId?: string, tenantId?: string): CanaryCheckResult {
+    const result = checkLeak(agentResponse, sessionId, tenantId);
     if (result.leaked) {
       recordCanaryLeak();
     }
