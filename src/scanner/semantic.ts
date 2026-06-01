@@ -27,10 +27,13 @@ let loadError: string | null = null;
 let corpusVectors: Float32Array[] = [];
 let benignVectors: Float32Array[] = [];
 
-const MODEL_DIR = process.env.SOVGUARD_EMBED_MODEL_DIR || join(process.cwd(), 'models', 'all-MiniLM-L6-v2');
+// Multilingual sentence embedder (paraphrase-multilingual-MiniLM-L12-v2, 50+
+// languages) so the attack corpus matches foreign-language attacks too — a
+// monolingual model leaves them far from the (English) corpus.
+const MODEL_DIR = process.env.SOVGUARD_EMBED_MODEL_DIR || join(process.cwd(), 'models', 'paraphrase-multilingual-MiniLM-L12-v2');
 const MODEL_FILE = 'model.onnx';
 const TOKENIZER_FILE = 'tokenizer.json';
-const MAX_LENGTH = 256;
+const MAX_LENGTH = 128;
 
 /** Canonical phrasings of known injection techniques. Inputs near ANY of these
  *  (in embedding space) are treated as semantically attack-like. Kept generic —
@@ -167,7 +170,7 @@ async function ensureModel(): Promise<boolean> {
     for (const phrase of BENIGN_CORPUS) benignVectors.push(await embed(phrase));
 
     modelLoaded = true;
-    console.log(`[semantic] all-MiniLM-L6-v2 loaded; ${corpusVectors.length} attack / ${benignVectors.length} benign vectors`);
+    console.log(`[semantic] embedding model loaded; ${corpusVectors.length} attack / ${benignVectors.length} benign vectors`);
     return true;
   } catch (err) {
     loadError = err instanceof Error ? err.message : 'Unknown error loading embedding model';

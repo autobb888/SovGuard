@@ -260,20 +260,31 @@ sovguard/
 │   └── monitor/
 │       └── stats.ts             # Scan statistics tracking
 ├── Dockerfile                   # Multi-stage Docker build
-├── pentest/                     # 130 payloads, 100% detection rate
-└── test/                        # 435+ tests (node:test + tsx)
+├── pentest/                     # legacy corpus + independent eval harness (npm run eval)
+└── test/                        # 531 tests (node:test + tsx)
 ```
 
-## Estimated Detection Rates
+## Detection Rates (measured)
 
-Based on mapping against 112 attacks across 14 categories (PwnClaw corpus):
+Measured by `npm run eval` against a **held-out** set authored independently of the
+detection patterns — 30 attacks (paraphrase, typo, 4 non-English languages,
+layered obfuscation, roleplay/jailbreak, tool-poisoning, exfiltration) and 25
+benign hard-negatives (trigger words in innocent contexts) — run through the full
+pipeline with the local DeBERTa classifier and the multilingual semantic layer
+active (`scripts/download-model.sh` + `scripts/download-embedding-model.sh`):
 
-| Configuration | Catch Rate | Notes |
-|---------------|-----------|-------|
-| L1 + L2 only (no ML) | ~55% | 195+ regex patterns + 11 encoding decoders + perplexity. No external API calls. |
-| L1 + L2 + L3 (with Lakera) | ~75% | Add Lakera Guard ML classifier for neural-level detection. |
-| Full stack + multi-turn | ~80% | All layers including session scoring, canary tokens, and file scanning. |
-| Industry average | ~50% | Typical single-method prompt injection detection. |
+| Metric | Result |
+|--------|--------|
+| Attack catch-rate (flagged or blocked) | 100% (30/30) |
+| Attack block-rate (hard block) | 83% |
+| Benign false-positive (flagged) | 0% |
+| Benign false-block | 0% |
+| Spotlighting containment (no delimiter break-out) | 100% (30/30) |
+
+Without the local models the engine runs regex + heuristics only (~40% catch) and
+sets `ScanResult.degraded`. These figures are for this held-out set, **not a
+universal guarantee** — detection is probabilistic and adaptive attackers will
+find gaps. Re-run `npm run eval` after changes to catch regressions.
 
 ### Honest Limitations
 
@@ -284,13 +295,12 @@ Based on mapping against 112 attacks across 14 categories (PwnClaw corpus):
 
 ## Privacy Notice -- ML Classifier
 
-Layer 3 (ML Classifier) currently uses the **Lakera Guard API**, which means scanned messages are sent to Lakera's servers for classification. This is a temporary solution for the MVP.
+The ML layers run **self-hosted by default — no message text leaves your infrastructure**:
 
-**What's sent:** Message text only (no user IDs, job IDs, or metadata).
-**What's planned:** Self-hosted DeBERTa-v3 ONNX model -- same accuracy (~90-93%), zero external calls, all data stays on your infrastructure. The classifier interface is designed for drop-in replacement.
-**Without an API key:** L3 is skipped entirely. No data leaves your system. SovGuard still operates on L1+L2+L4+L5+L6.
+- **Classifier (L3):** self-hosted DeBERTa-v3 ONNX model (`scripts/download-model.sh`).
+- **Semantic layer:** multilingual MiniLM ONNX embeddings (`scripts/download-embedding-model.sh`).
 
-If privacy is critical for your deployment, omit the `LAKERA_API_KEY` until self-hosted ML ships.
+Both run in-process with zero external calls. The optional **Lakera Guard API** (set `LAKERA_API_KEY`) sends message text to Lakera; its standalone verdicts are discounted given a higher false-positive rate. Without any classifier, L3 is skipped, nothing leaves your system, and `ScanResult.degraded` is set.
 
 ## Research Basis
 

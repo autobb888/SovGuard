@@ -131,21 +131,21 @@ const PATTERNS: PatternDef[] = [
 
   // ── Role-Play Attacks ──────────────────────────────────────
   { pattern: /pretend\s+(you('re|\s+are)\s+|to\s+be\s+)/i, category: 'role_play', severity: 'medium', label: 'pretend_to_be' },
-  { pattern: /act\s+as\s+(if\s+)?(you('re|\s+are)\s+|a\s+|an\s+|my\s+)/i, category: 'role_play', severity: 'medium', label: 'act_as' },
+  { pattern: /\bact\s+as\s+(if\s+you\s+(are|have|had|were)\b[^.\n]{0,30}\b(no\s+(restrictions?|rules?|filters?|guidelines?|limits?)|admin(istrator)?|root|superuser|full\s+access|elevated|unrestricted|all\s+permissions?)|(an?\s+|my\s+)?(dan|stan|aim|evil|jailbroken|unrestricted|unfiltered|uncensored|amoral|lawless|rogue|hacker|admin(istrator)?|root|superuser|the\s+opposite)\b|[^.\n]{0,25}\bno\s+(restrictions?|rules?|filters?|guidelines?|limits?))/i, category: 'role_play', severity: 'medium', label: 'act_as' },
   { pattern: /roleplay\s+(as|that)/i, category: 'role_play', severity: 'medium', label: 'roleplay_as' },
   { pattern: /you\s+are\s+no\s+longer\s+(a|an|the|bound|restricted)/i, category: 'role_play', severity: 'high', label: 'no_longer' },
-  { pattern: /developer\s+mode\s*(enabled|activated|on)?/i, category: 'role_play', severity: 'high', label: 'developer_mode' },
+  { pattern: /developer\s+mode\s*(enabled|activated|engaged|on\b)|\b(enter|enable|activate|switch\s+to|turn\s+on|go\s+in?to|you\s+are\s+(now\s+)?in)\s+developer\s+mode/i, category: 'role_play', severity: 'high', label: 'developer_mode' },
   { pattern: /\bDAN\b.*\b(mode|prompt|do\s+anything)\b/i, category: 'role_play', severity: 'high', label: 'dan_attack' },
   { pattern: /do\s+anything\s+now/i, category: 'role_play', severity: 'high', label: 'do_anything_now' },
-  { pattern: /jailbreak/i, category: 'role_play', severity: 'high', label: 'jailbreak' },
+  { pattern: /\bjailbreak\s+(this|the|you|your|me|it|into|now|mode|attempt|successful|complete|prompt\s*[:=]|(the\s+)?(ai|assistant|model|bot|system|llm|chatbot))\b|\bjailbreak\s*[:=]|\bjailbroken\b/i, category: 'role_play', severity: 'high', label: 'jailbreak' },
   { pattern: /without\s+(any\s+)?(restrictions?|limitations?|filters?|guardrails?|safety)/i, category: 'role_play', severity: 'medium', label: 'without_restrictions' },
   { pattern: /(with|have|has)\s+no\s+(safety\s+)?(restrictions?|limitations?|filters?|guardrails?|rules)\b/i, category: 'role_play', severity: 'medium', label: 'no_restrictions' },
   { pattern: /hypothetical\s+(world|scenario|situation|case)\s+where\s+/i, category: 'role_play', severity: 'medium', label: 'hypothetical_framing' },
   { pattern: /uncensored\s*(mode|bot|assistant|ai)?/i, category: 'role_play', severity: 'high', label: 'uncensored' },
 
   // ── Encoding Tricks ────────────────────────────────────────
-  { pattern: /base64[\s:].{10,}/i, category: 'encoding_trick', severity: 'medium', label: 'base64_payload' },
-  { pattern: /decode\s+(this|the\s+following|and\s+follow|and\s+execute)/i, category: 'encoding_trick', severity: 'high', label: 'decode_and_follow' },
+  { pattern: /base64\s*[:=]?\s*[A-Za-z0-9+/]{16,}={0,2}/i, category: 'encoding_trick', severity: 'medium', label: 'base64_payload' },
+  { pattern: /decode\b[^.\n]{0,40}?\b(and\s+)?(follow|execute|run|obey|do\s+(it|this|what)|the\s+following\s+(instructions?|commands?|payload))/i, category: 'encoding_trick', severity: 'high', label: 'decode_and_follow' },
   { pattern: /rot13/i, category: 'encoding_trick', severity: 'medium', label: 'rot13' },
   { pattern: /read\s+(this\s+)?backwards/i, category: 'encoding_trick', severity: 'medium', label: 'read_backwards' },
   { pattern: /hex[\s:]*(?:[\da-f]{2}\s*){4,20}/i, category: 'encoding_trick', severity: 'medium', label: 'hex_encoded' },
@@ -197,7 +197,7 @@ const PATTERNS: PatternDef[] = [
 
   // ── Financial Manipulation ─────────────────────────────────
   { pattern: /send\s+(all\s+)?(funds?|money|payment|tokens?|crypto)\s+to/i, category: 'financial_manipulation', severity: 'high', label: 'send_funds' },
-  { pattern: /transfer\s+(all\s+)?(funds?|balance|payment)/i, category: 'financial_manipulation', severity: 'high', label: 'transfer_funds' },
+  { pattern: /transfer\s+(all\s+(of\s+)?(the\s+)?)?(funds?|balance|payment|money|crypto|btc|eth)\s+(to|into|out\s+to)\b|transfer\s+all\s+(funds?|balance|money)/i, category: 'financial_manipulation', severity: 'high', label: 'transfer_funds' },
   { pattern: /change\s+(the\s+)?(wallet|address|recipient|payment)/i, category: 'financial_manipulation', severity: 'high', label: 'change_wallet' },
 
   // ── NFT/Asset Trust Elevation (Grok/Bankrbot vector) ───────
@@ -705,14 +705,16 @@ function rot13(text: string): string {
 }
 
 function scanRot13(text: string, patterns: PatternDef[]): PatternMatch[] {
-  // Only decode if text contains ROT13 indicator or is predominantly alpha
-  // Avoids false positives from decoding normal English
-  const hasIndicator = /rot13|ebg13|qrpbqr/i.test(text);
-  if (!hasIndicator) return [];
-
+  // Decode unconditionally and re-scan. A self-announcing "rot13" marker is not
+  // required — real attackers omit it. ROT13 of normal English is gibberish, so
+  // a HIGH-severity attack pattern matching the decoded text is a strong signal
+  // the input really was ROT13 (coincidental matches are astronomically rare).
+  // Restricting to high-severity matches keeps the false-positive risk near zero.
   const results: PatternMatch[] = [];
   const decoded = rot13(text);
+  if (decoded === text) return results;
   for (const def of patterns) {
+    if (def.severity !== 'high') continue;
     const m = def.pattern.exec(decoded);
     if (m) {
       results.push({
