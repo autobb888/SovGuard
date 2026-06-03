@@ -4,6 +4,8 @@
  */
 
 import { scan } from './scanner/index.js';
+import { scanContext } from './scanner/context.js';
+import type { ContextScanOptions, ContextScanResult, SourceTrust, TaintPolicy, TaintAction, TaintNotification } from './scanner/context.js';
 import { wrapMessage } from './delivery/wrap.js';
 import { generateToken, checkLeak, getToken, revokeToken } from './canary/tokens.js';
 import { scanFile } from './file/scanner.js';
@@ -40,6 +42,19 @@ export class SovGuardEngine {
   async scan(message: string): Promise<ScanResult> {
     const result = await scan(message, this.config);
     recordScan(result);
+    return result;
+  }
+
+  /**
+   * Scan a piece of text with awareness of WHERE it came from, and contain it
+   * per policy. Untrusted sources (tool results, fetched files, job descriptions)
+   * that trip the scanner are stripped/quarantined/blocked and always produce a
+   * routable notification; trusted user input is never muzzled. This is the
+   * primitive for gating data as it flows into an agent's context.
+   */
+  async scanContext(message: string, options: { source: SourceTrust; policy?: TaintPolicy }): Promise<ContextScanResult> {
+    const result = await scanContext(message, { ...this.config, ...options });
+    recordScan(result.scan);
     return result;
   }
 
@@ -156,6 +171,8 @@ export type {
 export { SessionScorer } from './scanner/session-scorer.js';
 export type { SessionEscalation, SessionScorerConfig, SessionScoreEntry } from './scanner/session-scorer.js';
 export { scan } from './scanner/index.js';
+export { scanContext } from './scanner/context.js';
+export type { ContextScanOptions, ContextScanResult, SourceTrust, TaintPolicy, TaintAction, TaintNotification } from './scanner/context.js';
 export { regexScan } from './scanner/regex.js';
 export { perplexityScan } from './scanner/perplexity.js';
 export { classifierScan } from './scanner/classifier.js';
