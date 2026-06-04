@@ -9,6 +9,7 @@ import { z } from 'zod';
 import { timingSafeEqual, createHash, randomUUID } from 'crypto';
 import { SovGuardEngine } from './index.js';
 import { getDb } from './tenant/db.js';
+import { scanPool, ScanPoolSaturatedError } from './scanner/scan-pool.js';
 import { ScanBody, ScanFileBody, ScanFileContentBody, ScanOutputBody, ScanReportBody, WrapBody, CanaryCreateBody, CanaryCheckBody } from './schemas.js';
 import { version } from './version.js';
 
@@ -143,7 +144,10 @@ app.get('/health', async () => {
 // ── Error handler ────────────────────────────────────────────────
 
 app.setErrorHandler((error, req, reply) => {
-  if (error instanceof z.ZodError) {
+  if (error instanceof ScanPoolSaturatedError) {
+    // H3: scan pool saturated under overload — refuse the request, never a fake verdict.
+    reply.status(503).send({ error: 'Scanner busy, please retry shortly.' });
+  } else if (error instanceof z.ZodError) {
     reply.status(400).send({ error: 'Validation error', details: error.errors.map(e => ({ field: e.path.join('.'), message: e.message })) });
   } else if ((error as any).statusCode && (error as any).statusCode < 500) {
     reply.status((error as any).statusCode).send({ error: 'Request error' });
@@ -178,6 +182,11 @@ async function shutdown(signal: string): Promise<void> {
     await app.close();
   } catch (err) {
     console.error('Error closing Fastify:', err);
+  }
+  try {
+    await scanPool.shutdown();   // H3: terminate scan workers
+  } catch {
+    // best effort
   }
   try {
     const { stopCleanup } = await import('./canary/tokens.js');
