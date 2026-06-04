@@ -33,7 +33,13 @@ const engine = new SovGuardEngine({
   classifierMode: (process.env.SOVGUARD_CLASSIFIER_MODE as 'local' | 'lakera' | 'auto') || 'auto',
 });
 
-const app = Fastify({ logger: true, bodyLimit: 131072 });
+const app = Fastify({
+  logger: true,
+  bodyLimit: 131072,            // 128KB max request body (matches ScanFileContentBody cap)
+  connectionTimeout: 30_000,    // 30s to complete the TCP/HTTP handshake
+  keepAliveTimeout: 72_000,     // 72s idle — above typical 60s proxy timeout
+  requestTimeout: 30_000,       // 30s to receive a full request (slowloris guard); well above worst-case scan time
+});
 
 // ── Rate Limiting ────────────────────────────────────────────────
 
