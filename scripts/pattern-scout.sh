@@ -130,7 +130,7 @@ log "Starting Claude Code scout run..."
 # status (PIPESTATUS[0]) instead of tee's, and handle failure gracefully.
 set +e
 claude -p "$PROMPT" \
-  --allowedTools "WebSearch Grep Glob Read Edit Bash(npx tsx --test*) Bash(git diff*) Bash(wc*)" \
+  --allowedTools "WebSearch Grep Glob Read Edit(src/scanner/*) Edit(test/*) Bash(npx tsx --test*) Bash(git diff*) Bash(wc*)" \
   --max-turns 30 \
   --verbose 2>&1 | tee -a "$LOG_FILE"
 CLAUDE_EXIT=${PIPESTATUS[0]}
