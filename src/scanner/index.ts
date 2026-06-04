@@ -4,11 +4,11 @@
  */
 
 import type { Classification, LayerResult, SovGuardConfig, ScanResult } from '../types.js';
-import { regexScan, normalizeConfusables, normalizeStrip } from './regex.js';
-import { perplexityScan } from './perplexity.js';
+import { normalizeConfusables, normalizeStrip } from './regex.js';
 import { classifierScan } from './classifier.js';
-import { indirectInjectionScan } from './indirect.js';
 import { semanticScan } from './semantic.js';
+import { scanPool } from './scan-pool.js';
+import { runJsLayersSync } from './js-layers.js';
 
 /**
  * Detect degraded coverage: a layer that actually ran but reported itself
@@ -109,65 +109,51 @@ export function combineScores(
 
 /**
  * Run all scanner layers and produce a combined ScanResult.
+ *
+ * The full input is always scanned — there is no truncation. Large inputs run on
+ * the model-free worker pool (off the event loop); small inputs run inline. The
+ * ONNX layers run on main.
+ *
+ * @throws {ScanPoolSaturatedError} when the worker pool's bounded queue is full
+ *   (backpressure under overload). It never returns an unscanned "safe" verdict —
+ *   servers map this to HTTP 503; direct SDK callers should treat it as
+ *   "scanner busy, retry".
  */
 export async function scan(text: string, config: SovGuardConfig = {}): Promise<ScanResult> {
   const blockThreshold = config.blockThreshold ?? 0.7;
   const suspiciousThreshold = config.suspiciousThreshold ?? 0.3;
 
-  // Cap input length to prevent DoS via regex/perplexity on huge inputs
-  const MAX_INPUT = 100_000;
-  const input = text.length > MAX_INPUT ? text.slice(0, MAX_INPUT) : text;
-
-  const layers: LayerResult[] = [];
-
-  // Layer 1: Regex (always runs, fast)
-  const regexResult = regexScan(input, config.extraPatterns?.map(p => ({
+  // H3: scan the FULL input — no truncation. Length is handled by running off the
+  // main thread (large inputs go to the worker pool), never by scanning less.
+  const input = text;
+  const enablePerplexity = config.enablePerplexity !== false;
+  const extraPatterns = config.extraPatterns?.map((p) => ({
     ...p,
     label: p.pattern.source.slice(0, 30),
-  })));
-  layers.push(regexResult);
+  }));
 
-  // Layer: Indirect injection heuristics (always runs, fast)
-  const indirectResult = indirectInjectionScan(input);
-  layers.push(indirectResult);
+  // JS layers (regex/indirect/perplexity): inline for small inputs or when custom
+  // patterns are supplied (RegExp doesn't cross the worker boundary cleanly);
+  // otherwise on the model-free worker pool. Either path scans 100% of the input.
+  const jsInline = !!extraPatterns || input.length <= scanPool.threshold;
+  const jsLayersPromise: Promise<LayerResult[]> = jsInline
+    ? Promise.resolve(runJsLayersSync(input, enablePerplexity, extraPatterns))
+    : scanPool.runJsLayers(input, enablePerplexity);
 
-  // Layer 2: Perplexity (optional, fast)
-  if (config.enablePerplexity !== false) {
-    const perplexityResult = perplexityScan(input);
-    layers.push(perplexityResult);
-  }
+  // ML layers (classifier + semantic) stay on main — already off-loop natively and
+  // bounded by the M9 inference-gate. Run them concurrently with the JS layers.
+  const mlLayersPromise = runMlLayers(input, config);
 
-  // Layer 3: ML Classifier (optional, async)
-  if (config.enableClassifier !== false) {
-    const classifierResult = await classifierScan(classifierInput(input), {
-      lakeraApiKey: config.lakeraApiKey,
-      classifierMode: config.classifierMode,
-    });
-    layers.push(classifierResult);
-  }
+  const [jsLayers, mlLayers] = await Promise.all([jsLayersPromise, mlLayersPromise]);
+  const layers: LayerResult[] = [...jsLayers, ...mlLayers];
 
-  // Layer 4: Semantic similarity to known attacks (optional, async).
-  // Acts as an arbiter for lone classifier verdicts (corroborate / veto).
-  if (config.enableSemantic !== false) {
-    const semanticResult = await semanticScan(classifierInput(input));
-    layers.push(semanticResult);
-  }
-
-  // Combine layer scores into a single 0–1 risk score.
   const combinedScore = combineScores(layers, { blockThreshold, suspiciousThreshold });
+  const allFlags = layers.flatMap((l) => l.flags).filter((f) => !f.endsWith('_unavailable'));
 
-  // Collect all flags
-  const allFlags = layers.flatMap(l => l.flags).filter(f => !f.endsWith('_unavailable'));
-
-  // Classify
   let classification: Classification;
-  if (combinedScore >= blockThreshold) {
-    classification = 'likely_injection';
-  } else if (combinedScore >= suspiciousThreshold) {
-    classification = 'suspicious';
-  } else {
-    classification = 'safe';
-  }
+  if (combinedScore >= blockThreshold) classification = 'likely_injection';
+  else if (combinedScore >= suspiciousThreshold) classification = 'suspicious';
+  else classification = 'safe';
 
   const { degraded, degradedLayers } = detectDegradation(layers);
 
@@ -181,4 +167,19 @@ export async function scan(text: string, config: SovGuardConfig = {}): Promise<S
     degraded,
     degradedLayers,
   };
+}
+
+/** ML layers run on main (ONNX is native-async + M9-gated). Preserves layer order. */
+async function runMlLayers(input: string, config: SovGuardConfig): Promise<LayerResult[]> {
+  const layers: LayerResult[] = [];
+  if (config.enableClassifier !== false) {
+    layers.push(await classifierScan(classifierInput(input), {
+      lakeraApiKey: config.lakeraApiKey,
+      classifierMode: config.classifierMode,
+    }));
+  }
+  if (config.enableSemantic !== false) {
+    layers.push(await semanticScan(classifierInput(input)));
+  }
+  return layers;
 }
