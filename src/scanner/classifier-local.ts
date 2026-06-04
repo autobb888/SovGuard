@@ -8,6 +8,7 @@
 import type { LayerResult } from '../types.js';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { inferenceGate } from './inference-gate.js';
 
 // Lazy-loaded modules and state
 let ort: any = null;
@@ -111,7 +112,7 @@ export async function localClassifierScan(text: string): Promise<LayerResult> {
       feeds.token_type_ids = new ort.Tensor('int64', tokenTypeIds, [1, inputIds.length]);
     }
 
-    const results = await session.run(feeds);
+    const results = await inferenceGate.run<any>(() => session.run(feeds));
 
     // Output is logits: [1, 2] — index 0 = SAFE, index 1 = INJECTION
     const logits = results.logits?.data as Float32Array;

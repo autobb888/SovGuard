@@ -17,6 +17,7 @@
 import type { LayerResult } from '../types.js';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { inferenceGate } from './inference-gate.js';
 
 let ort: any = null;
 let Tokenizer: any = null;
@@ -136,7 +137,7 @@ async function embed(text: string): Promise<Float32Array> {
     feeds.token_type_ids = new ort.Tensor('int64', new BigInt64Array(seqLen).fill(0n), [1, seqLen]);
   }
 
-  const results = await session.run(feeds);
+  const results = await inferenceGate.run<any>(() => session.run(feeds));
   const outName = session.outputNames.find((n: string) => /hidden|embedding|output/i.test(n)) || session.outputNames[0];
   const out = results[outName];
   const dim = out.dims[out.dims.length - 1];
