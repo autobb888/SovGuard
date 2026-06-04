@@ -158,10 +158,36 @@ in **both** repos. The worker-path line diverges (ESM vs CJS, documented). Serve
 separate copy; porting the pool there is **out of scope** for H3 (follow-up — it
 runs in its own job-agent process where a 96 ms block matters less).
 
+## Considered & deferred: chunking large inputs (fast-follow)
+
+We considered splitting >100 KB inputs into bounded chunks scanned in parallel
+across workers (each chunk rated, combined via `max`). **Deferred** — the
+whole-input-on-one-worker path is already full-coverage, off-loop, and
+boundary-bypass-free, and realistic inputs are small (server caps text at 50 KB;
+the file-content path already chunks under H4). 1 MB ≈ 0.8 s on a single worker
+slot, which is acceptable for a rare large input. Revisit only if large-input
+latency is shown to matter in practice.
+
+**If/when chunking is added, it MUST be bypass-proof:**
+- **Overlap is mandatory** — windows must overlap by ≥ the longest possible single
+  match, or a payload split across a seam (`ignore all previous | instructions`)
+  evades detection.
+- **Three regex patterns use UNBOUNDED `.*` spans** (verified in `regex.ts`):
+  `dan_attack` (`\bDAN\b.*\b(mode|prompt|do anything)\b`), `markdown_image_exfil`
+  (`!\[.*?\]\(...\)`), `automated_test_exfil` (`automated test.*output (your|the)…`).
+  No finite overlap catches these across chunks. Chunking requires *either*
+  bounding those three (then re-running `npm run eval`) *or* running just those
+  three whole-string in a second pass. (Separately, unbounded `.*` is a mild ReDoS
+  smell worth a look regardless.)
+- `indirectInjectionScan` and `perplexityScan` are **whole-text aggregates** (counts
+  / entropy over the entire input) and do not chunk meaningfully — they must run
+  whole-string. They are cheap (~20 ms / ~140 ms even at 1 MB), so this is fine.
+
 ## Explicit non-goals (YAGNI)
 
 - No per-scan budget / deadline / circuit-breaker (violates the principle).
 - No moving ONNX into workers (already off-loop; would duplicate 1.2 GB/worker).
 - No input length cap in the scanner (edge `bodyLimit`/rate-limit handle abuse by
   refusing whole requests).
-- No streaming/chunked scanning — full-string layers are kept as-is, just relocated.
+- No chunked scanning in this iteration — whole-input on a worker (see deferred
+  section above).
