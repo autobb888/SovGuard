@@ -200,11 +200,25 @@ import os from 'node:os';
 import type { LayerResult } from '../types.js';
 import { runJsLayersSync } from './js-layers.js';
 
-// --- worker file resolution (ESM variant; website uses __dirname — see plan) ---
+// --- worker spawn (ESM variant; website uses __dirname — see Task 6) ---
+// VERIFIED on Node 22 + tsx 4.x (Task 1 spike): `new Worker(path, {execArgv:
+// ['--import','tsx']})` does NOT work for a .ts ENTRY file — it throws
+// ERR_UNKNOWN_FILE_EXTENSION (the --import hook doesn't intercept the entry's
+// format check). So: dev/test loads the .ts worker via an eval bootstrap that
+// registers tsx through tsImport; production spawns the compiled .js directly
+// (no loader, no tsx runtime dependency).
 const _self = fileURLToPath(import.meta.url);
 const _isTs = _self.endsWith('.ts');
-const WORKER_PATH = join(dirname(_self), _isTs ? 'scan-worker.ts' : 'scan-worker.js');
-const WORKER_EXECARGV = _isTs ? ['--import', 'tsx'] : [];
+const _workerTs = join(dirname(_self), 'scan-worker.ts').replace(/\\/g, '/');
+const _workerJs = join(dirname(_self), 'scan-worker.js');
+
+function spawnWorker(): Worker {
+  if (_isTs) {
+    const boot = `import { tsImport } from 'tsx/esm/api';\nawait tsImport('file://${_workerTs}', import.meta.url);`;
+    return new Worker(boot, { eval: true });
+  }
+  return new Worker(_workerJs);
+}
 
 export class ScanPoolSaturatedError extends Error {
   constructor() {
@@ -276,7 +290,7 @@ export class ScanPool {
   }
 
   private spawn(): void {
-    const worker = new Worker(WORKER_PATH, { execArgv: WORKER_EXECARGV });
+    const worker = spawnWorker();
     const handle: WorkerHandle = { worker, current: null };
     worker.on('message', (resp: { id: number; layers?: LayerResult[]; error?: string }) => {
       const task = handle.current;
@@ -586,17 +600,26 @@ cp ../sovguard/test/scan-worker-pool.integration.test.ts test/scan-worker-pool.i
 ```
 (`js-layers.ts` and `scan-worker.ts` are module-system agnostic — they use only `import`/`export` which tsc compiles to CJS here. The tests use `import.meta.url` to locate the worker; valid under tsx in CJS mode too.)
 
-- [ ] **Step 2: Create `scan-pool.ts` with the CJS worker-path variant**
+- [ ] **Step 2: Create `scan-pool.ts` with the CJS worker-spawn variant**
 
-Copy `../sovguard/src/scanner/scan-pool.ts`, then replace ONLY the worker-path block:
+Copy `../sovguard/src/scanner/scan-pool.ts`, then replace ONLY the worker-spawn block. Remove the SDK's `import { fileURLToPath } from 'node:url';` line and drop `fileURLToPath`/`dirname` from the path import (CJS uses `__dirname`/`__filename`). Use:
 ```typescript
-// --- worker file resolution (CommonJS variant; SDK uses import.meta.url) ---
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
+// ...
+// --- worker spawn (CommonJS variant; SDK uses import.meta.url) ---
 const _isTs = __filename.endsWith('.ts');
-const WORKER_PATH = join(__dirname, _isTs ? 'scan-worker.ts' : 'scan-worker.js');
-const WORKER_EXECARGV = _isTs ? ['--import', 'tsx'] : [];
+const _workerTs = join(__dirname, 'scan-worker.ts').replace(/\\/g, '/');
+const _workerJs = join(__dirname, 'scan-worker.js');
+
+function spawnWorker(): Worker {
+  if (_isTs) {
+    const boot = `import { tsImport } from 'tsx/esm/api';\nawait tsImport('file://${_workerTs}', import.meta.url);`;
+    return new Worker(boot, { eval: true });
+  }
+  return new Worker(_workerJs);
+}
 ```
-Remove the SDK's `import { fileURLToPath } from 'node:url';` and the `import { dirname, join } from 'node:path';` line that pairs with it (keep a single `path` import as shown). Everything else is identical.
+Everything else is identical. **VERIFY the eval bootstrap works under the website's CommonJS-under-tsx setup** by running `test/scan-pool.test.ts` (Step 5). The eval string is ESM-syntax and Node's syntax detection should treat it as ESM regardless of the project being CJS — but confirm. If it fails, the fallback is a committed `.mjs` bootstrap file passed the worker path via `workerData` (escalate to the controller).
 
 - [ ] **Step 3: Apply the `scan()` change**
 

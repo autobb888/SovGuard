@@ -107,10 +107,13 @@ are cheap — no 1.2 GB model duplication, RAM stays flat.
   line is an **intentional per-repo divergence**, like `version.ts`. Documented in
   `[[project_two_repo_layout]]`.
 - **Dev (tsx) vs prod (dist):** under `node --import tsx` the worker is `.ts`; in
-  `dist/` it is `.js`. Detect from the current module's extension: if running from
-  a `.ts` file, spawn the worker with `{ execArgv: ['--import', 'tsx'] }` and the
-  `.ts` path; otherwise the plain `.js` path. This keeps the test suite
-  (`node --import tsx --test`) working without a build step.
+  `dist/` it is `.js`. **VERIFIED (Task 1 spike, Node 22 + tsx 4.x):** `{ execArgv:
+  ['--import', 'tsx'] }` does NOT work for a `.ts` worker *entry* file — it throws
+  `ERR_UNKNOWN_FILE_EXTENSION` (the `--import` hook doesn't intercept the entry's
+  format check). Working approach: dev/test loads the `.ts` worker via an eval
+  bootstrap that registers tsx through `tsImport` (`tsx/esm/api`); production spawns
+  the compiled `.js` directly (no loader, no tsx runtime dependency). Detect via the
+  module's extension. Keeps the suite working without a build step.
 
 ## Error handling
 
