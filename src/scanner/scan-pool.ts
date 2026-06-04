@@ -42,7 +42,6 @@ interface PoolTask {
   input: string;
   enablePerplexity: boolean;
   resolve: (layers: LayerResult[]) => void;
-  reject: (err: Error) => void;
 }
 interface WorkerHandle { worker: Worker; current: PoolTask | null; }
 
@@ -58,6 +57,7 @@ export class ScanPool {
   private queue: PoolTask[] = [];
   private nextId = 1;
   private started = false;
+  private stopped = false;
 
   constructor(cfg: ScanPoolConfig) {
     this.size = cfg.size;
@@ -67,7 +67,8 @@ export class ScanPool {
 
   /** Run the JS layers on a worker if enabled, else inline. Full scan either way. */
   runJsLayers(input: string, enablePerplexity: boolean): Promise<LayerResult[]> {
-    if (this.size <= 0) {
+    // Disabled or already shut down -> always inline (full scan; never refuse a real scan).
+    if (this.size <= 0 || this.stopped) {
       return Promise.resolve(runJsLayersSync(input, enablePerplexity));
     }
     this.start();
@@ -76,8 +77,8 @@ export class ScanPool {
     if (!handle && this.queue.length >= this.maxQueue) {
       return Promise.reject(new ScanPoolSaturatedError());
     }
-    return new Promise<LayerResult[]>((resolve, reject) => {
-      const task: PoolTask = { id: this.nextId++, input, enablePerplexity, resolve, reject };
+    return new Promise<LayerResult[]>((resolve) => {
+      const task: PoolTask = { id: this.nextId++, input, enablePerplexity, resolve };
       if (handle) this.dispatch(handle, task);
       else this.queue.push(task);
     });
@@ -89,6 +90,7 @@ export class ScanPool {
 
   async shutdown(): Promise<void> {
     this.started = false;
+    this.stopped = true;   // a late runJsLayers() after shutdown falls back to inline, not a respawn
     const ws = this.workers;
     // Resolve any queued tasks inline before discarding them — never drop detection.
     for (const t of this.queue) {
@@ -111,11 +113,16 @@ export class ScanPool {
       const task = handle.current;
       if (!task || task.id !== resp.id) return;
       handle.current = null;
-      // Worker-side error -> inline fallback (never drop detection).
-      task.resolve(resp.layers ?? runJsLayersSync(task.input, task.enablePerplexity));
+      if (resp.layers) {
+        task.resolve(resp.layers);
+      } else {
+        // Worker-side error -> inline fallback (never drop detection), but surface it.
+        console.error('[scan-pool] worker reported an error; scanning inline:', resp.error);
+        task.resolve(runJsLayersSync(task.input, task.enablePerplexity));
+      }
       this.release(handle);
     });
-    worker.on('error', () => this.faultInline(handle));
+    worker.on('error', (err) => { console.error('[scan-pool] worker crashed; scanning inline:', err); this.faultInline(handle); });
     worker.on('exit', () => this.handleExit(handle));
     this.workers.push(handle);
     // Pick up any queued task immediately (matters when respawning after a crash).

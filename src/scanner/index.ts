@@ -135,7 +135,7 @@ export async function scan(text: string, config: SovGuardConfig = {}): Promise<S
   // JS layers (regex/indirect/perplexity): inline for small inputs or when custom
   // patterns are supplied (RegExp doesn't cross the worker boundary cleanly);
   // otherwise on the model-free worker pool. Either path scans 100% of the input.
-  const jsInline = !!extraPatterns || input.length <= scanPool.threshold;
+  const jsInline = (extraPatterns != null && extraPatterns.length > 0) || input.length <= scanPool.threshold;
   const jsLayersPromise: Promise<LayerResult[]> = jsInline
     ? Promise.resolve(runJsLayersSync(input, enablePerplexity, extraPatterns))
     : scanPool.runJsLayers(input, enablePerplexity);
