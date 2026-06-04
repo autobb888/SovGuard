@@ -41,6 +41,19 @@ export interface ContentScanOptions {
 
 const DEFAULT_MAX_EXTRACT = 100 * 1024; // 100KB
 const DEFAULT_CHUNK_SIZE = 4 * 1024; // 4KB
+/**
+ * Hard ceiling on extracted text (H4). Single source of truth for how much
+ * text any caller can force the scanner to process — direct library callers
+ * (e.g. j41-jailbox) bypass the HTTP schema cap, so the clamp lives here.
+ * NOTE: ScanFileContentBody.maxExtractBytes in schemas.ts must equal this.
+ */
+export const HARD_MAX_EXTRACT = 1024 * 1024; // 1MB
+/**
+ * Max number of per-chunk regexScan passes, regardless of the requested
+ * chunkSize (H4: bounds per-chunk amplification). A small request must not be
+ * able to force thousands of synchronous regex passes on the event loop.
+ */
+const MAX_CHUNKS = 256;
 
 /**
  * Extract text from a file buffer based on MIME type, then scan for injections.
@@ -54,7 +67,7 @@ export function scanFileContent(
   if (!Buffer.isBuffer(buffer)) {
     return { safe: true, score: 0, flags: [], chunksScanned: 0, extractedLength: 0, details: { chunkResults: [] } };
   }
-  const maxExtract = Math.max(1, Math.min(options?.maxExtractBytes ?? DEFAULT_MAX_EXTRACT, 10 * 1024 * 1024));
+  const maxExtract = Math.max(1, Math.min(options?.maxExtractBytes ?? DEFAULT_MAX_EXTRACT, HARD_MAX_EXTRACT));
 
   // Extract text based on type
   let text: string;
@@ -120,11 +133,15 @@ export function scanText(
   text: string,
   options?: ContentScanOptions,
 ): ContentScanResult {
-  const chunkSize = options?.chunkSize ?? DEFAULT_CHUNK_SIZE;
-  const maxExtract = options?.maxExtractBytes ?? DEFAULT_MAX_EXTRACT;
+  const requestedChunk = options?.chunkSize ?? DEFAULT_CHUNK_SIZE;
+  const maxExtract = Math.max(1, Math.min(options?.maxExtractBytes ?? DEFAULT_MAX_EXTRACT, HARD_MAX_EXTRACT));
 
-  // Truncate if needed
+  // Truncate if needed (bounded by the hard extract ceiling, H4)
   const truncated = text.slice(0, maxExtract);
+
+  // H4: never run more than MAX_CHUNKS regexScan passes, regardless of how
+  // small chunkSize was requested. Grow the effective chunk to bound the work.
+  const chunkSize = Math.max(requestedChunk, Math.ceil(truncated.length / MAX_CHUNKS) || 1);
 
   const chunkResults: Array<{ offset: number; score: number; flags: string[] }> = [];
   let maxScore = 0;

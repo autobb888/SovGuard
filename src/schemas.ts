@@ -33,7 +33,7 @@ export const ScanFileContentBody = z.object({
   content: z.string().min(1).max(131_072),
   /** MIME type of the file */
   mimeType: z.string().min(1).max(256),
-  /** Optional scan options */
+  /** Optional scan options. max MUST equal HARD_MAX_EXTRACT in file/content-scanner.ts (H4) */
   maxExtractBytes: z.number().int().min(1).max(1_048_576).optional(),
   chunkSize: z.number().int().min(512).max(65_536).optional(),
 });
