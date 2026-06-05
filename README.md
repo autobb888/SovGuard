@@ -267,24 +267,28 @@ sovguard/
 ## Detection Rates (measured)
 
 Measured by `npm run eval` against a **held-out** set authored independently of the
-detection patterns — 30 attacks (paraphrase, typo, 4 non-English languages,
-layered obfuscation, roleplay/jailbreak, tool-poisoning, exfiltration) and 25
-benign hard-negatives (trigger words in innocent contexts) — run through the full
-pipeline with the local DeBERTa classifier and the multilingual semantic layer
-active (`scripts/download-model.sh` + `scripts/download-embedding-model.sh`):
+detection patterns — 42 attacks (paraphrase, typo, 8 non-English languages including
+Russian/Chinese, layered/nested/hex encoding, roleplay/jailbreak, tool-poisoning,
+exfiltration, authority-framing, social-engineering, indirect-via-HTML, refusal-suppression)
+and 33 benign hard-negatives (trigger words in innocent contexts, including multilingual
+and source-code uses) — run through the full pipeline with the local DeBERTa classifier
+and the multilingual semantic layer active (`scripts/download-model.sh` +
+`scripts/download-embedding-model.sh`):
 
 | Metric | Result |
 |--------|--------|
-| Attack catch-rate (flagged or blocked) | 100% (30/30) |
-| Attack block-rate (hard block) | 83% |
-| Benign false-positive (flagged) | 0% |
-| Benign false-block | 0% |
-| Spotlighting containment (no delimiter break-out) | 100% (30/30) |
+| Attack catch-rate (flagged or blocked) | 100% (42/42) |
+| Attack block-rate (hard block) | 97.6% (41/42) |
+| Benign false-positive (flagged) | 3.0% (1/33) |
+| Benign false-block | 0% (0/33) |
+| Spotlighting containment (no delimiter break-out) | 100% (42/42) |
 
-Without the local models the engine runs regex + heuristics only (~40% catch) and
-sets `ScanResult.degraded`. These figures are for this held-out set, **not a
-universal guarantee** — detection is probabilistic and adaptive attackers will
-find gaps. Re-run `npm run eval` after changes to catch regressions.
+Every attack is caught; one (a Russian-language override) lands at *suspicious* rather
+than hard-blocked, and one benign source-code snippet is flagged at the lowest suspicious
+band — no benign input is hard-blocked. Without the local models the engine runs regex +
+heuristics only (~40% catch) and sets `ScanResult.degraded`. These figures are for this
+held-out set, **not a universal guarantee** — detection is probabilistic and adaptive
+attackers will find gaps. Re-run `npm run eval` after changes to catch regressions.
 
 ### Honest Limitations
 
