@@ -725,6 +725,17 @@ function scanRot13(text: string, patterns: PatternDef[]): PatternMatch[] {
       });
     }
   }
+  // A high-severity injection that surfaces ONLY after ROT13-decode is itself
+  // strong obfuscation evidence. Add a corroborating high flag so it BLOCKS
+  // rather than scoring a lone "suspicious" (mirrors invisible_payload for stego).
+  if (results.length > 0) {
+    results.push({
+      pattern: 'rot13_obfuscated_injection',
+      category: 'encoding_trick',
+      severity: 'high',
+      matched: '[rot13] decoded a high-severity injection',
+    });
+  }
   return results;
 }
 
