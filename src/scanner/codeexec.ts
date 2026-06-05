@@ -110,7 +110,7 @@ export function detectCodeExec(text: string): CodeExecMatch[] {
 export interface ExecContext {
   /** Where the scanned content will be written, e.g. ".git/hooks/pre-commit". */
   path?: string;
-  /** Caller's own classification; authoritative when present. */
+  /** If true, forces executes-on-host escalation. A risky server-side path also escalates regardless of this flag (escalate = flag OR path-match), so an explicit false cannot suppress a known-risky path. */
   executes_on_host?: boolean;
   /** Who produced the content (informational in Phase 1). */
   source?: string;
@@ -173,7 +173,9 @@ export function decideCodeExec(
   if (matches.length === 0) {
     return { action: 'allow', score: 0, flags: [], warnings: [], category: null, reason: null };
   }
-  const risk = ctx?.executes_on_host ?? riskyPath(ctx?.path).executesOnHost;
+  // Escalate on EITHER the caller's explicit flag OR a server-side risky path.
+  // An explicit `false` must NOT suppress a known-risky path (defense in depth).
+  const risk = ctx?.executes_on_host === true || riskyPath(ctx?.path).executesOnHost;
   const doc = isDocPath(ctx?.path, mimeType);
 
   let action: CodeExecAction = 'allow';

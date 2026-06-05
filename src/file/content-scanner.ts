@@ -13,7 +13,6 @@
  * Convention: 0 = safe, 1 = dangerous.
  */
 
-import type { LayerResult } from '../types.js';
 import { regexScan } from '../scanner/regex.js';
 import {
   detectCodeExec, decideCodeExec, isDocPath,
