@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { detectCodeExec } from '../src/scanner/codeexec.js';
+import { riskyPath, isDocPath } from '../src/scanner/codeexec.js';
 
 
 describe('detectCodeExec — raw patterns', () => {
@@ -60,4 +61,24 @@ describe('detectCodeExec — decoded variants', () => {
     const text = `eval(atob('${inner}'))`;
     assert.ok(detectCodeExec(text).some(m => m.category === 'download_and_execute'));
   });
+});
+
+describe('riskyPath', () => {
+  for (const p of ['.git/hooks/pre-commit', 'package.json', '.envrc', 'setup.py',
+                   'build.rs', '.github/workflows/ci.yml', 'Dockerfile', 'Makefile',
+                   'src/proj/.git/hooks/post-merge', '/home/u/.bashrc']) {
+    it(`marks ${p} executes-on-host`, () => assert.equal(riskyPath(p).executesOnHost, true));
+  }
+  for (const p of ['README.md', 'src/index.ts', 'docs/guide.md', 'data.csv']) {
+    it(`does NOT mark ${p} executes-on-host`, () => assert.equal(riskyPath(p).executesOnHost, false));
+  }
+  it('returns false for undefined path', () => assert.equal(riskyPath(undefined).executesOnHost, false));
+});
+
+describe('isDocPath', () => {
+  it('treats README.md as doc', () => assert.equal(isDocPath('README.md'), true));
+  it('treats docs/guide.md as doc', () => assert.equal(isDocPath('docs/guide.md'), true));
+  it('treats markdown mime (no path) as doc', () => assert.equal(isDocPath(undefined, 'text/markdown'), true));
+  it('does NOT treat text/plain (no path) as doc', () => assert.equal(isDocPath(undefined, 'text/plain'), false));
+  it('does NOT treat .git/hooks path as doc', () => assert.equal(isDocPath('.git/hooks/pre-commit'), false));
 });

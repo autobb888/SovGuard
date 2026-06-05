@@ -106,3 +106,45 @@ export function detectCodeExec(text: string): CodeExecMatch[] {
   }
   return matches;
 }
+
+export interface ExecContext {
+  /** Where the scanned content will be written, e.g. ".git/hooks/pre-commit". */
+  path?: string;
+  /** Caller's own classification; authoritative when present. */
+  executes_on_host?: boolean;
+  /** Who produced the content (informational in Phase 1). */
+  source?: string;
+}
+
+const RISKY_PATH_RULES: Array<{ re: RegExp; label: string }> = [
+  { re: /(?:^|\/)\.git\/hooks\//i, label: 'git_hook' },
+  { re: /(?:^|\/)package\.json$/i, label: 'npm_scripts' },
+  { re: /(?:^|\/)(?:Makefile|makefile|GNUmakefile)$/i, label: 'makefile' },
+  { re: /(?:^|\/)\.github\/workflows\//i, label: 'ci_workflow' },
+  { re: /(?:^|\/)Dockerfile(?:\.[\w.\-]+)?$/i, label: 'dockerfile' },
+  { re: /(?:^|\/)\.envrc$/i, label: 'direnv' },
+  { re: /(?:^|\/)setup\.py$/i, label: 'setup_py' },
+  { re: /(?:^|\/)build\.rs$/i, label: 'build_rs' },
+  { re: /(?:^|\/)\.vscode\/tasks\.json$/i, label: 'vscode_tasks' },
+  { re: /(?:^|\/)\.(?:bashrc|zshrc|profile|bash_profile|bash_login)$/i, label: 'shell_rc' },
+  { re: /(?:^|\/)(?:crontab|cron\.d\/)/i, label: 'crontab' },
+];
+
+/** Does a write to `path` land somewhere the host later executes? */
+export function riskyPath(path?: string): { executesOnHost: boolean; label?: string } {
+  if (!path) return { executesOnHost: false };
+  for (const rule of RISKY_PATH_RULES) {
+    if (rule.re.test(path)) return { executesOnHost: true, label: rule.label };
+  }
+  return { executesOnHost: false };
+}
+
+const DOC_PATH_RE = /(?:^|\/)(?:README|CHANGELOG|CONTRIBUTING|LICENSE)[^/]*$|\.(?:md|markdown|mdx|rst)$|(?:^|\/)docs?\//i;
+const DOC_MIME_RE = /^text\/(?:markdown|x-markdown)$/i;
+
+/** Is this content a document (where shell snippets are illustrative, not executed)? */
+export function isDocPath(path?: string, mimeType?: string): boolean {
+  if (path && DOC_PATH_RE.test(path)) return true;
+  if (!path && mimeType && DOC_MIME_RE.test(mimeType)) return true;
+  return false;
+}
