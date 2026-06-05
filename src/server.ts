@@ -27,6 +27,9 @@ function safeCompare(a: string, b: string): boolean {
 }
 
 import { isLocalModelAvailable } from './scanner/classifier-local.js';
+import { checkDetectionHealth, type DetectionHealth } from './scanner/model-health.js';
+
+let detectionHealth: DetectionHealth | null = null; // set at startup; surfaced on /health
 
 const engine = new SovGuardEngine({
   enableClassifier: !!process.env.LAKERA_API_KEY || isLocalModelAvailable(),
@@ -138,7 +141,19 @@ app.get('/v1/stats', async () => {
 });
 
 app.get('/health', async () => {
-  return { status: 'ok', version, mode: 'standalone' };
+  return {
+    status: 'ok',
+    version,
+    mode: 'standalone',
+    detection: detectionHealth
+      ? {
+          healthy: detectionHealth.healthy,
+          classifierActive: detectionHealth.classifierActive,
+          degraded: detectionHealth.degraded,
+          ...(detectionHealth.reason ? { reason: detectionHealth.reason } : {}),
+        }
+      : { healthy: null },
+  };
 });
 
 // ── Error handler ────────────────────────────────────────────────
@@ -166,12 +181,34 @@ if (isNaN(PORT) || PORT < 1 || PORT > 65535) {
 }
 const HOST = process.env.SOVGUARD_HOST || '127.0.0.1';
 
-app.listen({ port: PORT, host: HOST }, (err) => {
-  if (err) {
-    console.error(err);
-    process.exit(1);
+// Verify the detection stack catches a known injection before serving. Regex-only
+// (no ML classifier) catches ~40% and silently misses paraphrase/typo/multilingual/
+// indirect attacks. SOVGUARD_REQUIRE_MODELS=1 refuses to serve in that state.
+async function start(): Promise<void> {
+  detectionHealth = await checkDetectionHealth((t) => engine.scan(t));
+  const requireModels = process.env.SOVGUARD_REQUIRE_MODELS === '1' || process.env.SOVGUARD_REQUIRE_MODELS === 'true';
+  if (!detectionHealth.healthy) {
+    if (requireModels) {
+      console.error(`[FATAL] Detection DEGRADED — ${detectionHealth.reason}. SOVGUARD_REQUIRE_MODELS is set; refusing to serve in degraded mode.`);
+      process.exit(1);
+    }
+    console.warn(`[security] Detection DEGRADED — ${detectionHealth.reason}. Serving anyway (set SOVGUARD_REQUIRE_MODELS=1 to fail-closed); /health reports degraded.`);
+  } else {
+    console.log('[security] Detection self-check passed — ML classifier active, known injection flagged.');
   }
-  console.log(`SovGuard Engine listening on ${HOST}:${PORT}`);
+
+  app.listen({ port: PORT, host: HOST }, (err) => {
+    if (err) {
+      console.error(err);
+      process.exit(1);
+    }
+    console.log(`SovGuard Engine listening on ${HOST}:${PORT}`);
+  });
+}
+
+start().catch((err) => {
+  console.error('Startup failed:', err);
+  process.exit(1);
 });
 
 // ── Graceful Shutdown ────────────────────────────────────────────
