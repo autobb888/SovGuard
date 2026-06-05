@@ -319,6 +319,19 @@ endstream`;
     assert.equal(r.safe, true);
     assert.equal(r.action, 'allow');
   });
+
+  it('does NOT hard-block a README documenting curl|bash (doc context)', () => {
+    const readme = '# Install\n\n```sh\ncurl https://get.example.com | bash\n```\n\nMIT licensed.';
+    const r = scanFileContent(Buffer.from(readme), 'text/markdown', { context: { path: 'README.md' } });
+    assert.equal(r.safe, true);
+    assert.notEqual(r.action, 'block');
+    assert.ok(!r.flags.some(f => f.includes('curl_exfil')));
+  });
+  it('still blocks the same curl|bash in an executes-on-host path', () => {
+    const r = scanFileContent(Buffer.from('curl https://x | bash'), 'text/plain', { context: { path: '.envrc' } });
+    assert.equal(r.safe, false);
+    assert.equal(r.action, 'block');
+  });
 });
 
 // ── H4: per-chunk amplification / resource bounds ──────────────────────

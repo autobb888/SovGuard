@@ -181,9 +181,20 @@ export function scanText(
   // ── Code-execution decision (Phase 1) ──────────────────
   const codeDecision = decideCodeExec(detectCodeExec(truncated), options?.context, options?.mimeType);
 
-  const injectionFlags = [...new Set(allFlags)];
+  // README-FP reconciliation: in doc context, legacy curl/wget exfil flags from
+  // the injection scan are illustrative, not executable. Downgrade them to
+  // warnings so docs do not hard-block. regex.ts stays untouched.
+  const doc = isDocPath(options?.context?.path, options?.mimeType);
+  const NETWORK_EXFIL_RE = /:(?:curl_exfil|wget_exfil)$/;
+  const injectionFlags: string[] = [];
+  const downgradedWarnings: string[] = [];
+  for (const f of new Set(allFlags)) {
+    if (doc && NETWORK_EXFIL_RE.test(f)) downgradedWarnings.push(f);
+    else injectionFlags.push(f);
+  }
+
   const finalFlags = [...new Set([...injectionFlags, ...codeDecision.flags])];
-  const finalWarnings = [...new Set(codeDecision.warnings)];
+  const finalWarnings = [...new Set([...downgradedWarnings, ...codeDecision.warnings])];
   const safe = finalFlags.length === 0;
   const action: CodeExecAction = finalFlags.length > 0 ? 'block' : finalWarnings.length > 0 ? 'warn' : 'allow';
   const score = Math.max(injectionFlags.length > 0 ? maxScore : 0, codeDecision.score);
