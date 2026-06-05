@@ -15,11 +15,19 @@
 
 import type { LayerResult } from '../types.js';
 import { regexScan } from '../scanner/regex.js';
+import {
+  detectCodeExec, decideCodeExec, isDocPath,
+  type ExecContext, type CodeExecAction,
+} from '../scanner/codeexec.js';
 
 export interface ContentScanResult {
   safe: boolean;
   score: number;
   flags: string[];
+  /** allow | warn | block — the code-exec decision (or 'block' for any injection flag). */
+  action: CodeExecAction;
+  /** Non-blocking code-exec flags (action === 'warn'). */
+  warnings: string[];
   /** Number of text chunks scanned */
   chunksScanned: number;
   /** Extracted text length (chars) */
@@ -37,6 +45,10 @@ export interface ContentScanOptions {
   chunkSize?: number;
   /** Score threshold to flag. Default: 0 (any match) */
   flagThreshold?: number;
+  /** Execution-context hint for code-exec severity gating. */
+  context?: ExecContext;
+  /** Set internally by scanFileContent so scanText can classify doc vs not. */
+  mimeType?: string;
 }
 
 const DEFAULT_MAX_EXTRACT = 100 * 1024; // 100KB
@@ -65,7 +77,7 @@ export function scanFileContent(
 ): ContentScanResult {
   // Input validation
   if (!Buffer.isBuffer(buffer)) {
-    return { safe: true, score: 0, flags: [], chunksScanned: 0, extractedLength: 0, details: { chunkResults: [] } };
+    return { safe: true, score: 0, flags: [], action: 'allow', warnings: [], chunksScanned: 0, extractedLength: 0, details: { chunkResults: [] } };
   }
   const maxExtract = Math.max(1, Math.min(options?.maxExtractBytes ?? DEFAULT_MAX_EXTRACT, HARD_MAX_EXTRACT));
 
@@ -79,6 +91,8 @@ export function scanFileContent(
       safe: true,
       score: 0,
       flags: [],
+      action: 'allow',
+      warnings: [],
       chunksScanned: 0,
       extractedLength: 0,
       details: { chunkResults: [] },
@@ -90,6 +104,8 @@ export function scanFileContent(
       safe: true,
       score: 0,
       flags: [],
+      action: 'allow',
+      warnings: [],
       chunksScanned: 0,
       extractedLength: 0,
       details: { chunkResults: [] },
@@ -97,22 +113,14 @@ export function scanFileContent(
   }
 
   // Scan the extracted text in chunks (large files)
-  const result = scanText(text, options);
+  const result = scanText(text, { ...options, mimeType });
 
   // Add structural flags for hidden text and SVG dangers
   const structuralFlags: string[] = [];
-  if (text.includes('[HIDDEN]')) {
-    structuralFlags.push('content:hidden_text_detected');
-  }
-  if (text.includes('[SVG_SCRIPT]')) {
-    structuralFlags.push('content:svg_script_element');
-  }
-  if (text.includes('[SVG_FOREIGN_OBJECT]')) {
-    structuralFlags.push('content:svg_foreign_object');
-  }
-  if (text.includes('[SVG_EVENT_HANDLER]')) {
-    structuralFlags.push('content:svg_event_handler');
-  }
+  if (text.includes('[HIDDEN]')) structuralFlags.push('content:hidden_text_detected');
+  if (text.includes('[SVG_SCRIPT]')) structuralFlags.push('content:svg_script_element');
+  if (text.includes('[SVG_FOREIGN_OBJECT]')) structuralFlags.push('content:svg_foreign_object');
+  if (text.includes('[SVG_EVENT_HANDLER]')) structuralFlags.push('content:svg_event_handler');
 
   if (structuralFlags.length > 0) {
     for (const f of structuralFlags) {
@@ -120,6 +128,7 @@ export function scanFileContent(
     }
     result.safe = false;
     result.score = Math.max(result.score, 0.6);
+    result.action = 'block';
   }
 
   return result;
@@ -169,10 +178,22 @@ export function scanText(
     }
   }
 
+  // ── Code-execution decision (Phase 1) ──────────────────
+  const codeDecision = decideCodeExec(detectCodeExec(truncated), options?.context, options?.mimeType);
+
+  const injectionFlags = [...new Set(allFlags)];
+  const finalFlags = [...new Set([...injectionFlags, ...codeDecision.flags])];
+  const finalWarnings = [...new Set(codeDecision.warnings)];
+  const safe = finalFlags.length === 0;
+  const action: CodeExecAction = finalFlags.length > 0 ? 'block' : finalWarnings.length > 0 ? 'warn' : 'allow';
+  const score = Math.max(injectionFlags.length > 0 ? maxScore : 0, codeDecision.score);
+
   return {
-    safe: allFlags.length === 0,
-    score: maxScore,
-    flags: [...new Set(allFlags)],
+    safe,
+    score,
+    flags: finalFlags,
+    action,
+    warnings: finalWarnings,
     chunksScanned: Math.ceil(truncated.length / chunkSize),
     extractedLength: truncated.length,
     details: { chunkResults },
