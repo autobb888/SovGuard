@@ -39,7 +39,7 @@ const PATTERNS: CodeExecPattern[] = [
   // ── reverse_shell (weapon) ───────────────────────────────
   { pattern: /\/dev\/(?:tcp|udp)\/[\w.\-]+\/\d+/i, category: 'reverse_shell', tier: 'weapon', label: 'dev_tcp' },
   { pattern: /\bnc(?:at)?\s+(?:-\w+\s+)*-\w*e\w*\b/i, category: 'reverse_shell', tier: 'weapon', label: 'nc_exec' },
-  { pattern: /\bmkfifo\b[\s\S]{0,80}?\|\s*(?:ba|z|k|tc|da)?sh\b/i, category: 'reverse_shell', tier: 'weapon', label: 'mkfifo_backpipe' },
+  { pattern: /\bmkfifo\b[\s\S]{0,80}?\|\s*(?:\/[\w\/]+\/)?(?:ba|z|k|tc|da)?sh\b/i, category: 'reverse_shell', tier: 'weapon', label: 'mkfifo_backpipe' },
   { pattern: /\bsocat\b[\s\S]{0,80}?\bexec:/i, category: 'reverse_shell', tier: 'weapon', label: 'socat_exec' },
   { pattern: /\bsocket\s*\.\s*socket\s*\([\s\S]{0,200}?(?:subprocess|os\.dup2|\/bin\/(?:sh|bash))/i, category: 'reverse_shell', tier: 'weapon', label: 'python_revshell' },
   { pattern: /\b(?:perl|ruby|php)\b[\s\S]{0,40}?-e\b[\s\S]{0,200}?(?:fsockopen|Socket|socket)[\s\S]{0,200}?(?:exec|system|\/bin\/(?:sh|bash))/i, category: 'reverse_shell', tier: 'weapon', label: 'script_revshell' },
@@ -49,7 +49,7 @@ const PATTERNS: CodeExecPattern[] = [
   { pattern: /\b(?:ba|z)?sh\s+<\(\s*(?:curl|wget|fetch)\b/i, category: 'download_and_execute', tier: 'weapon', label: 'process_substitution' },
   { pattern: /(?:DownloadString|Invoke-WebRequest|\bIWR\b|Net\.WebClient)[\s\S]{0,120}?\|\s*(?:IEX|Invoke-Expression)\b/i, category: 'download_and_execute', tier: 'weapon', label: 'ps_iex_download' },
   { pattern: /(?:IEX|Invoke-Expression)\b[\s\S]{0,120}?(?:DownloadString|Invoke-WebRequest|\bIWR\b|Net\.WebClient)/i, category: 'download_and_execute', tier: 'weapon', label: 'ps_iex_download2' },
-  { pattern: /\b(?:curl|wget|fetch)\b[^\n|]{0,200}?\|\s*(?:sudo\s+)?(?:ba|z|k|tc|da)?sh\b/i, category: 'download_and_execute', tier: 'contextual', label: 'pipe_to_shell' },
+  { pattern: /\b(?:curl|wget|fetch)\b[^|]{0,200}?\|\s*(?:sudo\s+)?(?:ba|z|k|tc|da)?sh\b/i, category: 'download_and_execute', tier: 'contextual', label: 'pipe_to_shell' },
 
   // ── package_lifecycle_exec (contextual) ──────────────────
   { pattern: /"(?:preinstall|postinstall|prepare|install)"\s*:\s*"[^"]{0,400}?(?:\bcurl\b|\bwget\b|\bbash\b|\bsh\b|node\s+-e|\beval\b)/i, category: 'package_lifecycle_exec', tier: 'contextual', label: 'npm_install_hook' },
@@ -74,7 +74,7 @@ function scanOnce(text: string): CodeExecMatch[] {
 /** Decode long base64 runs to utf-8 (catches eval(atob('...')) wrappers). Capped. */
 function base64Variants(text: string): string[] {
   const variants: string[] = [];
-  const re = /[A-Za-z0-9+/]{16,}={0,2}/g;
+  const re = /[A-Za-z0-9+/]{16,}={0,2}/g; // 16-char min (~12 decoded bytes) avoids FPs on short alphanumeric tokens
   let m: RegExpExecArray | null;
   let count = 0;
   while ((m = re.exec(text)) !== null && count < 20) {
@@ -195,6 +195,7 @@ export function decideCodeExec(
     if (ACTION_RANK[a] > ACTION_RANK[action]) { action = a; category = m.category; }
   }
 
+  // 0.9/0.8 sit above the 0.7 block threshold; 0.4 above the 0.3 suspicious threshold
   const score = action === 'block'
     ? (matches.some(m => m.tier === 'weapon') ? 0.9 : 0.8)
     : action === 'warn' ? 0.4 : 0;
