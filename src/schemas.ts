@@ -36,6 +36,12 @@ export const ScanFileContentBody = z.object({
   /** Optional scan options. max MUST equal HARD_MAX_EXTRACT in file/content-scanner.ts (H4) */
   maxExtractBytes: z.number().int().min(1).max(1_048_576).optional(),
   chunkSize: z.number().int().min(512).max(65_536).optional(),
+  /** Optional execution-context hint for code-exec severity gating. */
+  context: z.object({
+    path: z.string().max(1024).optional(),
+    executes_on_host: z.boolean().optional(),
+    source: z.string().max(64).optional(),
+  }).optional(),
 });
 
 export const ScanOutputBody = z.object({

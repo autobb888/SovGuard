@@ -83,6 +83,7 @@ app.post('/v1/scan/file/content', async (req) => {
   const result = engine.scanFileContent(buffer, body.mimeType, {
     maxExtractBytes: body.maxExtractBytes,
     chunkSize: body.chunkSize,
+    context: body.context,
   });
   return result;
 });
