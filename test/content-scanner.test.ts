@@ -332,6 +332,15 @@ endstream`;
     assert.equal(r.safe, false);
     assert.equal(r.action, 'block');
   });
+
+  it('a doc-downgraded network command warns with a non-zero, sub-suspicious score', () => {
+    // bare wget URL in a README (no pipe-to-shell): legacy wget_exfil downgraded to a warning
+    const r = scanFileContent(Buffer.from('See https://example.com or run: wget https://example.com/get'), 'text/markdown', { context: { path: 'README.md' } });
+    assert.equal(r.safe, true);
+    assert.equal(r.action, 'warn');
+    assert.ok(r.warnings.length > 0);
+    assert.ok(r.score > 0 && r.score < 0.3, `expected sub-suspicious score, got ${r.score}`);
+  });
 });
 
 // ── H4: per-chunk amplification / resource bounds ──────────────────────

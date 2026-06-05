@@ -197,7 +197,10 @@ export function scanText(
   const finalWarnings = [...new Set([...downgradedWarnings, ...codeDecision.warnings])];
   const safe = finalFlags.length === 0;
   const action: CodeExecAction = finalFlags.length > 0 ? 'block' : finalWarnings.length > 0 ? 'warn' : 'allow';
-  const score = Math.max(injectionFlags.length > 0 ? maxScore : 0, codeDecision.score);
+  const baseScore = Math.max(injectionFlags.length > 0 ? maxScore : 0, codeDecision.score);
+  // A warn with score 0 (e.g. a doc-downgraded curl/wget flag) is inconsistent; floor it
+  // to a sub-suspicious value (< 0.3) so score and action agree without re-classifying.
+  const score = action === 'warn' && baseScore === 0 ? 0.15 : baseScore;
 
   return {
     safe,
