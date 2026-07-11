@@ -2,7 +2,7 @@
 
 **Prompt injection detection and safe message delivery for AI agents.**
 
-6-layer inbound scanning, 5-scanner outbound protection, multi-turn escalation detection, file content scanning, and structured delivery using Microsoft's Spotlighting pattern. Built for agent marketplaces where untrusted users interact with AI agents.
+6-layer inbound scanning, 9-scanner outbound protection, multi-turn escalation detection, file content scanning, and structured delivery using Microsoft's Spotlighting pattern. Built for agent marketplaces where untrusted users interact with AI agents.
 
 > The only agent communication library with built-in prompt injection protection.
 
@@ -96,10 +96,10 @@ docker run -p 3100:3100 -e SOVGUARD_API_KEY=your-secret sovguard
 | L1 | **Regex** | ~1ms | 195+ patterns: instruction overrides, skeleton key, CSS steganography, log-to-leak, deceptive delight, role-play, DAN, exfiltration, delimiter/ChatML, encoding tricks, financial manipulation |
 | L1+ | **Encoding Decoders** | ~1ms | 11 decoders: Base64, Base32, ROT13, hex, Unicode escapes, HTML entities, URL encoding, leetspeak, token-break normalization, GhostInk (Unicode tags + variation selectors) |
 | L2 | **Perplexity** | ~1ms | GCG adversarial suffixes, many-shot jailbreak detection, deceptive delight structural analysis, gibberish text, mixed scripts |
-| L3 | **ML Classifier** | ~50-100ms | Lakera Guard v2 API -- catches semantic jailbreaks, social engineering, refusal bypass. Graceful degradation if no API key. |
+| L3 | **ML Classifier** | ~50-100ms | Self-hosted DeBERTa-v3 (ONNX) + multilingual MiniLM semantic layer, in-process with zero external calls -- catches semantic jailbreaks, social engineering, paraphrased/non-English attacks. Optional Lakera Guard API fallback (discounted, off by default). Graceful degradation. |
 | L4 | **Structured Delivery** | N/A | Wraps messages with randomized data markers (Spotlighting) so agents treat input as data, not instructions |
 | L5 | **Canary Tokens** | ~1ms | Per-session natural-language canaries with 24h TTL -- detects system prompt exfiltration |
-| L6 | **File Scanner** | ~1ms | Filename injection, path traversal, null bytes, Unicode RLO, metadata injection, **file content scanning** (TXT, MD, CSV, JSON, XML, PDF) |
+| L6 | **File Scanner** | ~1ms | Filename injection, path traversal, null bytes, Unicode RLO, metadata injection, **file content scanning** (TXT, MD, CSV, JSON, XML, HTML, SVG, PDF incl. compressed, DOCX, XLSX, PPTX) |
 
 ### Outbound (agent -> user)
 
@@ -111,6 +111,9 @@ docker run -p 3100:3100 -e SOVGUARD_API_KEY=your-secret sovguard
 | **Financial** | Unauthorized payment addresses, wallet manipulation (BTC, ETH, XMR, LTC) |
 | **Contamination** | Cross-job data leakage via hashed fingerprint comparison |
 | **Toxicity** | Profanity, hate speech, threats, harassment detection |
+| **Secrets** | Leaked credentials in output: API keys, tokens, private keys (AWS / OpenAI / GitHub / Slack / JWT / PEM) |
+| **Exfil** | Remote-image data exfiltration via markdown/HTML (zero-click pixel leaks) |
+| **Egress** | Canary-token leaks and data-egress markers in agent responses |
 
 ### Multi-Turn (cross-message)
 
