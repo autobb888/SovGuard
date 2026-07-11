@@ -12,6 +12,7 @@ import { scanContamination } from './contamination.js';
 import { scanToxicity } from './toxicity.js';
 import { scanEgress } from './egress.js';
 import { scanExfil } from './exfil.js';
+import { scanSecrets } from './secrets.js';
 
 const ACTION_SCORES: Record<string, number> = {
   pass: 0,
@@ -47,6 +48,7 @@ export function scanOutput(
     ...scanPII(message, context.jobCategory),
     ...scanURLs(message),
     ...scanExfil(message),
+    ...scanSecrets(message),
     ...scanCode(message, context.jobCategory),
     ...scanFinancial(message, context.whitelistedAddresses),
     ...scanContamination(message, context.jobId, context.jobFingerprints),
@@ -77,3 +79,4 @@ export { scanContamination } from './contamination.js';
 export { scanToxicity } from './toxicity.js';
 export { scanEgress } from './egress.js';
 export { scanExfil } from './exfil.js';
+export { scanSecrets } from './secrets.js';

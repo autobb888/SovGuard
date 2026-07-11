@@ -18,6 +18,7 @@ import {
   detectCodeExec, decideCodeExec, isDocPath,
   type ExecContext, type CodeExecAction,
 } from '../scanner/codeexec.js';
+import { scanSecrets } from '../outbound/secrets.js';
 
 export interface ContentScanResult {
   safe: boolean;
@@ -127,6 +128,21 @@ export function scanFileContent(
     }
     result.safe = false;
     result.score = Math.max(result.score, 0.6);
+    result.action = 'block';
+  }
+
+  // Secret-value detection: a credential (API key / private key / token) present
+  // in an uploaded file's body is a leak. scanSecrets returns OutputFlag[]; here
+  // we fold each into this scanner's string[] flags convention and block.
+  const secretFlags = scanSecrets(text);
+  if (secretFlags.length > 0) {
+    for (const sf of secretFlags) {
+      const f = `content:secret_leak:${sf.severity}`;
+      if (!result.flags.includes(f)) result.flags.push(f);
+    }
+    result.safe = false;
+    const hasCritical = secretFlags.some(sf => sf.severity === 'critical');
+    result.score = Math.max(result.score, hasCritical ? 0.8 : 0.6);
     result.action = 'block';
   }
 

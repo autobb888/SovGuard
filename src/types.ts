@@ -147,7 +147,7 @@ export interface OutputScanResult {
 export interface OutputFlag {
   type: 'pii_detected' | 'suspicious_url' | 'malicious_code' |
         'cross_contamination' | 'financial_manipulation' | 'agent_exfiltration' | 'data_uri' |
-        'toxicity' | 'injection_success';
+        'toxicity' | 'injection_success' | 'secret_leak';
   severity: 'low' | 'medium' | 'high' | 'critical';
   detail: string;
   evidence: string;
