@@ -11,6 +11,9 @@ import { SovGuardEngine } from './index.js';
 import { getDb } from './tenant/db.js';
 import { scanPool, ScanPoolSaturatedError } from './scanner/scan-pool.js';
 import { ScanBody, ScanFileBody, ScanFileContentBody, ScanOutputBody, ScanReportBody, WrapBody, CanaryCreateBody, CanaryCheckBody } from './schemas.js';
+import { SessionScorer } from './scanner/session-scorer.js';
+import { hashId } from './outbound/contamination.js';
+import { resolveMode, annotateVerdict } from './verdict-annotation.js';
 import { version } from './version.js';
 
 const API_KEY = process.env.SOVGUARD_API_KEY;
@@ -36,6 +39,12 @@ const engine = new SovGuardEngine({
   lakeraApiKey: process.env.LAKERA_API_KEY,
   classifierMode: (process.env.SOVGUARD_CLASSIFIER_MODE as 'local' | 'lakera' | 'auto') || 'auto',
 });
+
+// C4: one process-wide scorer tracks rolling per-session scores for crescendo detection.
+const sessionScorer = new SessionScorer();
+
+// C5: enforce (block) vs monitor (observe-only) — pure response annotation, never changes the verdict.
+const enforcementMode = resolveMode(process.env.SOVGUARD_MODE);
 
 const app = Fastify({
   logger: true,
@@ -68,7 +77,12 @@ app.addHook('preHandler', async (req, reply) => {
 app.post('/v1/scan', async (req) => {
   const body = ScanBody.parse(req.body);
   const result = await engine.scan(body.text);
-  return result;
+  const annotated = annotateVerdict(result, enforcementMode);
+  if (body.sessionId) {
+    const esc = sessionScorer.record(body.sessionId, result.score, result.classification as any);
+    return { ...annotated, session: { escalated: esc.escalated, rollingSum: esc.rollingSum, windowSize: esc.windowSize } };
+  }
+  return annotated;
 });
 
 app.post('/v1/scan/file', async (req) => {
@@ -96,9 +110,17 @@ app.post('/v1/scan/output', async (req) => {
     whitelistedAddresses: body.whitelistedAddresses
       ? new Set(body.whitelistedAddresses)
       : undefined,
+    // C3: session canary — egress scanner flags exfiltration if the output leaks it.
+    canaryToken: body.canaryToken,
+    // C3: the contamination scanner keys fingerprints by OTHER job ids and matches on
+    // hashed identifiers. Callers send a flat list of foreign identifiers, so bucket them
+    // under one synthetic non-current job id and hash them the same way the scanner does.
+    jobFingerprints: body.jobFingerprints && body.jobFingerprints.length > 0
+      ? new Map([[`other:${randomUUID()}`, new Set(body.jobFingerprints.map((id) => hashId(id)))]])
+      : undefined,
   };
   const result = await engine.scanOutput(body.text, context);
-  return result;
+  return annotateVerdict(result, enforcementMode);
 });
 
 app.post('/v1/wrap', async (req) => {
@@ -207,10 +229,17 @@ async function start(): Promise<void> {
   });
 }
 
-start().catch((err) => {
-  console.error('Startup failed:', err);
-  process.exit(1);
-});
+// Only auto-start (bind a port / attach signal handlers) when run as the entrypoint.
+// Importing this module in tests must not listen or register process handlers.
+const isEntrypoint = import.meta.url === `file://${process.argv[1]}`;
+if (isEntrypoint) {
+  start().catch((err) => {
+    console.error('Startup failed:', err);
+    process.exit(1);
+  });
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
+}
 
 // ── Graceful Shutdown ────────────────────────────────────────────
 
@@ -220,6 +249,11 @@ async function shutdown(signal: string): Promise<void> {
     await app.close();
   } catch (err) {
     console.error('Error closing Fastify:', err);
+  }
+  try {
+    sessionScorer.stopPruneTimer();   // C4: stop the crescendo scorer's prune timer
+  } catch {
+    // best effort
   }
   try {
     await scanPool.shutdown();   // H3: terminate scan workers
@@ -241,8 +275,5 @@ async function shutdown(signal: string): Promise<void> {
   console.log('Shutdown complete.');
   process.exit(0);
 }
-
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-process.on('SIGINT', () => shutdown('SIGINT'));
 
 export default app;
