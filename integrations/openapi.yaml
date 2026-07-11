@@ -1,0 +1,673 @@
+openapi: 3.1.0
+info:
+  title: SovGuard API
+  version: "1.0.0"
+  description: |
+    Prompt-injection detection and safe message delivery for AI agents.
+
+    All endpoints except `GET /health` require an API key sent in the
+    `X-API-Key` header. Request/response shapes mirror the SovGuard engine's
+    Zod schemas (`src/schemas.ts`) and result types (`src/types.ts`).
+  license:
+    name: MIT
+servers:
+  - url: https://api.sovguard.io
+    description: Hosted SovGuard API
+  - url: http://127.0.0.1:3100
+    description: Local self-hosted server (default host/port)
+
+security:
+  - ApiKeyAuth: []
+
+tags:
+  - name: scan
+    description: Inbound, outbound, and file scanning
+  - name: delivery
+    description: Spotlighting message wrapping
+  - name: canary
+    description: Canary token creation and leak detection
+  - name: ops
+    description: Reporting, stats, and health
+
+paths:
+  /v1/scan:
+    post:
+      tags: [scan]
+      summary: Scan inbound message text
+      operationId: scanText
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScanBody"
+      responses:
+        "200":
+          description: Scan verdict. Includes a `session` block when `sessionId` is supplied.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnnotatedScanResult"
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "503": { $ref: "#/components/responses/ScannerBusy" }
+
+  /v1/scan/output:
+    post:
+      tags: [scan]
+      summary: Scan an outbound agent response
+      operationId: scanOutput
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScanOutputBody"
+      responses:
+        "200":
+          description: Outbound scan verdict (block threshold 0.6).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnnotatedOutputScanResult"
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "503": { $ref: "#/components/responses/ScannerBusy" }
+
+  /v1/scan/file:
+    post:
+      tags: [scan]
+      summary: Scan a filename and its metadata
+      operationId: scanFile
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScanFileBody"
+      responses:
+        "200":
+          description: File name/metadata scan result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FileScanResult"
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/scan/file/content:
+    post:
+      tags: [scan]
+      summary: Scan the (base64-encoded) content of a file
+      operationId: scanFileContent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScanFileContentBody"
+      responses:
+        "200":
+          description: File content scan result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContentScanResult"
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+        "503": { $ref: "#/components/responses/ScannerBusy" }
+
+  /v1/wrap:
+    post:
+      tags: [delivery]
+      summary: Scan then wrap a message for safe delivery (Spotlighting)
+      operationId: wrap
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WrapBody"
+      responses:
+        "200":
+          description: The scan result plus the wrapped message.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [scan, wrapped]
+                properties:
+                  scan: { $ref: "#/components/schemas/ScanResult" }
+                  wrapped: { $ref: "#/components/schemas/WrappedMessage" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/canary/create:
+    post:
+      tags: [canary]
+      summary: Create a per-session canary token
+      operationId: createCanary
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CanaryCreateBody"
+      responses:
+        "200":
+          description: The created canary token.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CanaryToken"
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/canary/check:
+    post:
+      tags: [canary]
+      summary: Check whether text leaks a canary token
+      operationId: checkCanary
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CanaryCheckBody"
+      responses:
+        "200":
+          description: Canary leak result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CanaryCheckResult"
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/report:
+    post:
+      tags: [ops]
+      summary: Report a scan verdict (false positive / negative / confirmed)
+      operationId: report
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScanReportBody"
+      responses:
+        "200":
+          description: Report accepted.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [id, status]
+                properties:
+                  id: { type: string, format: uuid }
+                  status: { type: string, example: received }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /v1/stats:
+    get:
+      tags: [ops]
+      summary: Monitoring statistics
+      operationId: getStats
+      responses:
+        "200":
+          description: Aggregate scan statistics.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SafetyStats"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "429": { $ref: "#/components/responses/RateLimited" }
+
+  /health:
+    get:
+      tags: [ops]
+      summary: Health check (no authentication required)
+      operationId: health
+      security: []
+      responses:
+        "200":
+          description: Server health and detection status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResult"
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid API key.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    ValidationError:
+      description: Request body failed schema validation.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error: { type: string, example: Validation error }
+              details:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    field: { type: string }
+                    message: { type: string }
+    RateLimited:
+      description: Too many requests (100/min default; 20/min for canary/create).
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    ScannerBusy:
+      description: Scan pool saturated under load; retry shortly.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+
+    # ── Request bodies (mirror src/schemas.ts) ──────────────────────
+
+    ScanBody:
+      type: object
+      required: [text]
+      properties:
+        text:
+          type: string
+          minLength: 1
+          maxLength: 50000
+          description: Message text to scan.
+        sessionId:
+          type: string
+          minLength: 1
+          maxLength: 256
+          description: Optional session id — enables multi-turn crescendo detection.
+
+    ScanOutputBody:
+      type: object
+      required: [text, jobId]
+      properties:
+        text: { type: string, minLength: 1, maxLength: 50000 }
+        jobId: { type: string, minLength: 1, maxLength: 256 }
+        jobCategory: { type: string, minLength: 1, maxLength: 256 }
+        whitelistedAddresses:
+          type: array
+          maxItems: 100
+          items: { type: string, maxLength: 256 }
+          description: Addresses to whitelist in the financial scanner.
+        canaryToken:
+          type: string
+          minLength: 1
+          maxLength: 256
+          description: Session canary phrase; flags exfiltration if the output leaks it.
+        jobFingerprints:
+          type: array
+          maxItems: 50
+          items: { type: string, maxLength: 512 }
+          description: Identifiers from OTHER jobs that must not appear in this output.
+
+    ScanFileBody:
+      type: object
+      required: [filename]
+      properties:
+        filename: { type: string, minLength: 1, maxLength: 1000 }
+        metadata:
+          type: object
+          description: Up to 50 keys. Each value is a string (max 10000 chars) or a number.
+          additionalProperties:
+            oneOf:
+              - { type: string, maxLength: 10000 }
+              - { type: number }
+
+    ScanFileContentBody:
+      type: object
+      required: [content, mimeType]
+      properties:
+        content:
+          type: string
+          format: byte
+          minLength: 1
+          maxLength: 131072
+          description: Base64-encoded file content (must fit within the 128KB body limit).
+        mimeType: { type: string, minLength: 1, maxLength: 256 }
+        maxExtractBytes:
+          type: integer
+          minimum: 1
+          maximum: 1048576
+          description: Max text to extract in bytes.
+        chunkSize:
+          type: integer
+          minimum: 512
+          maximum: 65536
+          description: Chunk size for scanning.
+        context:
+          type: object
+          description: Optional execution-context hint for code-exec severity gating.
+          properties:
+            path: { type: string, maxLength: 1024 }
+            executes_on_host: { type: boolean }
+            source: { type: string, maxLength: 64 }
+
+    WrapBody:
+      type: object
+      required: [text]
+      properties:
+        text: { type: string, minLength: 1, maxLength: 50000 }
+        role: { type: string, minLength: 1, maxLength: 256 }
+        jobId: { type: string, minLength: 1, maxLength: 256 }
+        sessionId: { type: string, minLength: 1, maxLength: 256 }
+
+    CanaryCreateBody:
+      type: object
+      required: [sessionId]
+      properties:
+        sessionId: { type: string, minLength: 1, maxLength: 256 }
+
+    CanaryCheckBody:
+      type: object
+      required: [text]
+      properties:
+        text: { type: string, minLength: 1, maxLength: 50000 }
+        sessionId: { type: string, maxLength: 256 }
+
+    ScanReportBody:
+      type: object
+      required: [content_hash, score, verdict]
+      properties:
+        file_path: { type: string, minLength: 1, maxLength: 1024 }
+        content_hash: { type: string, minLength: 1, maxLength: 128 }
+        score: { type: number, minimum: 0, maximum: 1 }
+        mime_type: { type: string, minLength: 1, maxLength: 256 }
+        workspace_uid: { type: string, minLength: 1, maxLength: 256 }
+        verdict:
+          type: string
+          enum: [false_positive, false_negative, confirmed]
+        notes: { type: string, maxLength: 1000 }
+
+    # ── Result shapes (mirror src/types.ts) ─────────────────────────
+
+    Classification:
+      type: string
+      enum: [safe, suspicious, likely_injection]
+
+    LayerResult:
+      type: object
+      required: [layer, score, flags]
+      properties:
+        layer: { type: string }
+        score: { type: number }
+        flags:
+          type: array
+          items: { type: string }
+        details:
+          type: object
+          additionalProperties: true
+
+    ScanResult:
+      type: object
+      required: [safe, score, classification, flags, layers, scannedAt]
+      properties:
+        safe: { type: boolean }
+        score:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: 0 (safe) to 1 (dangerous).
+        classification: { $ref: "#/components/schemas/Classification" }
+        flags:
+          type: array
+          items: { type: string }
+        layers:
+          type: array
+          items: { $ref: "#/components/schemas/LayerResult" }
+        scannedAt: { type: integer, description: Epoch milliseconds. }
+        degraded:
+          type: boolean
+          description: True if a detection layer could not run (reduced coverage).
+        degradedLayers:
+          type: array
+          items: { type: string }
+
+    VerdictAnnotation:
+      type: object
+      required: [mode, wouldBlock, degraded]
+      properties:
+        mode:
+          type: string
+          enum: [enforce, monitor]
+          description: Enforcement mode (SOVGUARD_MODE). Never changes the verdict.
+        wouldBlock:
+          type: boolean
+          description: Whether SovGuard would block (`!safe && score >= threshold`).
+        degraded:
+          type: boolean
+
+    SessionEscalation:
+      type: object
+      required: [escalated, rollingSum, windowSize]
+      properties:
+        escalated: { type: boolean }
+        rollingSum: { type: number }
+        windowSize: { type: integer }
+
+    AnnotatedScanResult:
+      description: A ScanResult with enforcement annotations; `session` present when a sessionId was sent.
+      allOf:
+        - $ref: "#/components/schemas/ScanResult"
+        - $ref: "#/components/schemas/VerdictAnnotation"
+        - type: object
+          properties:
+            session: { $ref: "#/components/schemas/SessionEscalation" }
+
+    OutputFlag:
+      type: object
+      required: [type, severity, detail, evidence, action]
+      properties:
+        type:
+          type: string
+          enum:
+            - pii_detected
+            - suspicious_url
+            - malicious_code
+            - cross_contamination
+            - financial_manipulation
+            - agent_exfiltration
+            - data_uri
+            - toxicity
+            - injection_success
+            - secret_leak
+        severity:
+          type: string
+          enum: [low, medium, high, critical]
+        detail: { type: string }
+        evidence: { type: string }
+        action:
+          type: string
+          enum: [pass, warn, redact, block, flag]
+
+    OutputScanResult:
+      type: object
+      required: [safe, score, classification, flags, scannedAt]
+      properties:
+        safe: { type: boolean }
+        score:
+          type: number
+          minimum: 0
+          maximum: 1
+        classification:
+          type: string
+          enum: [safe, warning, flagged, blocked]
+        flags:
+          type: array
+          items: { $ref: "#/components/schemas/OutputFlag" }
+        scannedAt: { type: integer }
+
+    AnnotatedOutputScanResult:
+      allOf:
+        - $ref: "#/components/schemas/OutputScanResult"
+        - $ref: "#/components/schemas/VerdictAnnotation"
+
+    FileScanResult:
+      type: object
+      required: [safe, sanitizedFilename, flags, details]
+      properties:
+        safe: { type: boolean }
+        sanitizedFilename: { type: string }
+        flags:
+          type: array
+          items: { type: string }
+        details:
+          type: object
+          required:
+            - pathTraversal
+            - nullBytes
+            - unicodeRLO
+            - injectionInName
+            - suspiciousMetadata
+            - dangerousExtension
+            - doubleExtension
+          properties:
+            pathTraversal: { type: boolean }
+            nullBytes: { type: boolean }
+            unicodeRLO: { type: boolean }
+            injectionInName: { type: boolean }
+            suspiciousMetadata: { type: boolean }
+            dangerousExtension: { type: boolean }
+            doubleExtension: { type: boolean }
+
+    ContentScanResult:
+      type: object
+      required: [safe, score, flags, action, warnings, chunksScanned, extractedLength, details]
+      properties:
+        safe: { type: boolean }
+        score: { type: number, minimum: 0, maximum: 1 }
+        flags:
+          type: array
+          items: { type: string }
+        action:
+          type: string
+          enum: [allow, warn, block]
+          description: The code-exec decision (or 'block' for any injection flag).
+        warnings:
+          type: array
+          items: { type: string }
+          description: Non-blocking code-exec flags (action === 'warn').
+        chunksScanned: { type: integer }
+        extractedLength: { type: integer, description: Extracted text length in chars. }
+        details:
+          type: object
+          required: [chunkResults]
+          properties:
+            chunkResults:
+              type: array
+              items:
+                type: object
+                required: [offset, score, flags]
+                properties:
+                  offset: { type: integer }
+                  score: { type: number }
+                  flags:
+                    type: array
+                    items: { type: string }
+
+    WrappedMessage:
+      type: object
+      required: [formatted, metadata]
+      properties:
+        formatted:
+          type: string
+          description: Spotlighting-wrapped message ready for delivery to the agent.
+        metadata:
+          type: object
+          required: [role, safetyScore, classification, timestamp]
+          properties:
+            role: { type: string }
+            safetyScore: { type: number }
+            classification: { $ref: "#/components/schemas/Classification" }
+            timestamp: { type: string }
+            jobId: { type: string }
+
+    CanaryToken:
+      type: object
+      required: [token, sessionId, createdAt, injectionText]
+      properties:
+        token: { type: string }
+        sessionId: { type: string }
+        createdAt: { type: integer, description: Epoch milliseconds. }
+        injectionText:
+          type: string
+          description: Natural-language canary to inject into the agent context.
+
+    CanaryCheckResult:
+      type: object
+      required: [leaked]
+      properties:
+        leaked: { type: boolean }
+        token: { type: string }
+        sessionId: { type: string }
+
+    SafetyStats:
+      type: object
+      required:
+        - totalScanned
+        - safe
+        - suspicious
+        - likelyInjection
+        - blocked
+        - canaryLeaks
+        - avgScore
+        - topCategories
+        - since
+      properties:
+        totalScanned: { type: integer }
+        safe: { type: integer }
+        suspicious: { type: integer }
+        likelyInjection: { type: integer }
+        blocked: { type: integer }
+        canaryLeaks: { type: integer }
+        avgScore: { type: number }
+        topCategories:
+          type: object
+          additionalProperties: { type: integer }
+        since: { type: integer, description: Epoch milliseconds. }
+
+    HealthResult:
+      type: object
+      required: [status, version, mode, detection]
+      properties:
+        status: { type: string, example: ok }
+        version: { type: string }
+        mode: { type: string, example: standalone }
+        detection:
+          type: object
+          properties:
+            healthy:
+              type: [boolean, "null"]
+            classifierActive: { type: boolean }
+            degraded: { type: boolean }
+            reason: { type: string }
