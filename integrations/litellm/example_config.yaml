@@ -1,0 +1,51 @@
+# ---------------------------------------------------------------------------
+# Example LiteLLM proxy config wiring SovGuard as a guardrail.
+#
+# Run it:
+#   pip install 'litellm[proxy]' httpx
+#   export SOVGUARD_API_KEY=sk-...            # your SovGuard tenant key
+#   export SOVGUARD_API_BASE=https://api.sovguard.io   # optional, this is the default
+#   export OPENAI_API_KEY=sk-...             # (or whatever upstream provider you use)
+#   litellm --config example_config.yaml
+#
+# The guardrail module (sovguard_guardrail.py) must be importable — run litellm
+# from this directory, or add this directory to PYTHONPATH.
+# ---------------------------------------------------------------------------
+
+model_list:
+  - model_name: gpt-4o-mini
+    litellm_params:
+      model: openai/gpt-4o-mini
+      api_key: os.environ/OPENAI_API_KEY
+
+guardrails:
+  # 1) INPUT guardrail (pre_call): scans the user prompt through POST /v1/scan
+  #    BEFORE the request reaches the model. Blocks at score >= block_threshold
+  #    (default 0.7). This is implemented by SovGuardGuardrail.async_pre_call_hook.
+  - guardrail_name: "sovguard-input"
+    litellm_params:
+      guardrail: sovguard_guardrail.SovGuardGuardrail
+      mode: "pre_call"
+      api_base: os.environ/SOVGUARD_API_BASE
+      api_key: os.environ/SOVGUARD_API_KEY
+      # block_threshold: 0.7   # optional override; default is 0.7
+
+  # 2) OUTPUT guardrail (post_call): scans the MODEL'S RESPONSE after generation.
+  #    LiteLLM invokes async_post_call_success_hook for post_call guardrails.
+  #    The SovGuard output endpoint is POST /v1/scan/output and — unlike the input
+  #    /v1/scan endpoint — it REQUIRES a `jobId` field to correlate the output with
+  #    its originating scan. Use the LiteLLM request id when you have it, or a
+  #    static label like "litellm" for stateless output-only scanning, e.g.:
+  #
+  #        POST {api_base}/v1/scan/output
+  #        { "jobId": "litellm", "text": "<model response text>" }
+  #
+  #    Enable this entry once you have added an async_post_call_success_hook to the
+  #    guardrail class that POSTs to /v1/scan/output with a jobId. It is listed here
+  #    (commented) so the wiring is documented in one place.
+  # - guardrail_name: "sovguard-output"
+  #   litellm_params:
+  #     guardrail: sovguard_guardrail.SovGuardGuardrail
+  #     mode: "post_call"
+  #     api_base: os.environ/SOVGUARD_API_BASE
+  #     api_key: os.environ/SOVGUARD_API_KEY
