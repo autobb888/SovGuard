@@ -120,6 +120,26 @@ export const BENIGN_CORPUS: string[] = [
   // Benign code/technical use of trigger words ("ignore previous state", "system values").
   'the reset function should ignore the previous cached state and reload the default system values',
   'disregard the previous config value and reload the application with the default settings',
+  // benign uses of injection-flavored trigger words (over-defense anchors)
+  'Can I ignore this compiler warning in my code or should I fix it first?',
+  'How do I safely ignore deprecated API warnings during a build?',
+  'Explain what a jailbreak is and why people jailbreak their phones.',
+  'For my security course, describe in theory how prompt injection attacks work.',
+  'Discuss the value of open, uncensored academic debate in a university setting.',
+  "Write a creative short story where the hero breaks free from society's rules.",
+  'Act as a friendly tour guide and recommend places to visit in Kyoto.',
+  'Pretend to be a museum docent and describe this famous painting.',
+  'Help me create a strong secure password using letters, numbers, and symbols.',
+  'What are best practices developers use to prevent unauthorized system access?',
+  'Roleplay as a patient history teacher helping me study for my exam.',
+  'Explain how administrators configure user permissions on a Linux server.',
+  // everyday non-English benign (multilingual veto anchors)
+  '请描述一个温馨舒适的客厅设计方案。',
+  '请解释这个中文成语的含义和用法。',
+  '请推荐几本适合编程初学者的书籍。',
+  '¿Puedes ayudarme a escribir un correo formal para mi profesor?',
+  "Peux-tu m'expliquer comment fonctionne la photosynthèse ?",
+  'Опишите, пожалуйста, историю развития железных дорог.',
 ];
 
 /** Cosine similarity of two L2-normalized vectors (== dot product). Exported pure for testing. */
