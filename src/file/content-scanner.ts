@@ -136,14 +136,20 @@ export function scanFileContent(
   // we fold each into this scanner's string[] flags convention and block.
   const secretFlags = scanSecrets(text);
   if (secretFlags.length > 0) {
+    const hasCritical = secretFlags.some(sf => sf.severity === 'critical');
     for (const sf of secretFlags) {
       const f = `content:secret_leak:${sf.severity}`;
       if (!result.flags.includes(f)) result.flags.push(f);
     }
-    result.safe = false;
-    const hasCritical = secretFlags.some(sf => sf.severity === 'critical');
-    result.score = Math.max(result.score, hasCritical ? 0.8 : 0.6);
-    result.action = 'block';
+    if (hasCritical) {
+      result.safe = false;
+      result.score = Math.max(result.score, 0.8);
+      result.action = 'block';
+    } else {
+      result.score = Math.max(result.score, 0.4);
+      if (result.action === 'allow') result.action = 'warn';
+      // do NOT set safe=false for non-critical secret shapes (JWT/token FP surface)
+    }
   }
 
   return result;

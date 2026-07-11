@@ -19,7 +19,7 @@ export function scanSecrets(message: string): OutputFlag[] {
     const m = message.match(rule.re);
     if (m) flags.push({ type: 'secret_leak', severity: rule.severity,
       detail: `Possible ${rule.label} present in content`,
-      evidence: m[0].slice(0, 12) + '…', action: rule.severity === 'critical' ? 'block' : 'redact' });
+      evidence: '(redacted)', action: rule.severity === 'critical' ? 'block' : 'redact' });
   }
   return flags;
 }

