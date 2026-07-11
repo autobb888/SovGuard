@@ -19,6 +19,7 @@ import {
   type ExecContext, type CodeExecAction,
 } from '../scanner/codeexec.js';
 import { scanSecrets } from '../outbound/secrets.js';
+import { unzipSync, strFromU8 } from 'fflate';
 
 export interface ContentScanResult {
   safe: boolean;
@@ -235,6 +236,64 @@ export function scanText(
   };
 }
 
+/** OOXML text-bearing parts per MIME type. We unzip ONLY these named parts. */
+const OOXML_TEXT_PARTS: Record<string, RegExp> = {
+  // .docx
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
+    /^word\/(document|header\d*|footer\d*|footnotes|endnotes|comments)\.xml$/,
+  // .xlsx
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
+    /^xl\/(sharedStrings\.xml|worksheets\/sheet\d+\.xml)$/,
+  // .pptx
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation':
+    /^ppt\/(slides\/slide\d+|notesSlides\/notesSlide\d+)\.xml$/,
+};
+
+/** Strip XML tags and decode common entities to recover visible text. */
+function stripXmlTags(xml: string): string {
+  return xml
+    .replace(/<[^>]{0,8192}>/g, ' ') // bounded quantifier: no ReDoS
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Extract text from an OOXML (docx/xlsx/pptx) container.
+ * Bomb-guarded: only text-bearing parts are decompressed, each bounded by its
+ * header-declared originalSize, with a running total budget of maxBytes.
+ * Throws on a malformed archive — caller (scanFileContent) treats that as
+ * unscannable → safe (fail-open on extraction, consistent with other formats).
+ */
+function extractOoxmlText(buffer: Buffer, mimeType: string, maxBytes: number): string {
+  const partRe = OOXML_TEXT_PARTS[mimeType];
+  if (!partRe) return '';
+  let budget = 0;
+  const files = unzipSync(buffer, {
+    filter: (f) => {
+      if (!partRe.test(f.name)) return false;
+      if (f.originalSize > maxBytes) return false; // skip an oversized single part
+      if (budget >= maxBytes) return false;        // total budget exhausted
+      budget += f.originalSize;
+      return true;
+    },
+  });
+  const chunks: string[] = [];
+  let total = 0;
+  // Deterministic order (sheet1 before sheet2, etc.)
+  for (const name of Object.keys(files).sort()) {
+    if (total >= maxBytes) break;
+    const text = stripXmlTags(strFromU8(files[name]).slice(0, maxBytes));
+    if (text) { chunks.push(text); total += text.length; }
+  }
+  return chunks.join('\n').slice(0, maxBytes);
+}
+
 /**
  * Extract readable text from a file buffer.
  */
@@ -261,6 +320,11 @@ function extractText(buffer: Buffer, mimeType: string, maxBytes: number): string
 
     case 'application/pdf':
       return extractPdfText(buffer, maxBytes);
+
+    case 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
+    case 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
+    case 'application/vnd.openxmlformats-officedocument.presentationml.presentation':
+      return extractOoxmlText(buffer, mimeType, maxBytes);
 
     default:
       return '';
