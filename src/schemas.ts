@@ -5,7 +5,11 @@
 
 import { z } from 'zod';
 
-export const ScanBody = z.object({ text: z.string().min(1).max(50000) });
+export const ScanBody = z.object({
+  text: z.string().min(1).max(50000),
+  /** Optional session id — enables multi-turn crescendo detection (C4). */
+  sessionId: z.string().min(1).max(256).optional(),
+});
 
 export const ScanFileBody = z.object({
   filename: z.string().min(1).max(1000),
@@ -49,6 +53,10 @@ export const ScanOutputBody = z.object({
   jobId: z.string().min(1).max(256),
   jobCategory: z.string().min(1).max(256).optional(),
   whitelistedAddresses: z.array(z.string().max(256)).max(100).optional(),
+  /** C3: session canary phrase — egress scanner flags exfiltration if the output leaks it. */
+  canaryToken: z.string().min(1).max(256).optional(),
+  /** C3: identifiers from OTHER jobs that must not appear in this output (cross-contamination). */
+  jobFingerprints: z.array(z.string().max(512)).max(50).optional(),
 });
 
 export const ScanReportBody = z.object({
