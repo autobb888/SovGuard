@@ -20,6 +20,7 @@ import {
 } from '../scanner/codeexec.js';
 import { scanSecrets } from '../outbound/secrets.js';
 import { unzipSync, strFromU8 } from 'fflate';
+import { inflateSync } from 'node:zlib';
 
 export interface ContentScanResult {
   safe: boolean;
@@ -337,40 +338,89 @@ function extractText(buffer: Buffer, mimeType: string, maxBytes: number): string
  * Not comprehensive (no CMap, no font decoding) but catches injections in plain-text PDF content.
  */
 function extractPdfText(buffer: Buffer, maxBytes: number): string {
-  // Slice buffer before regex to prevent ReDoS on oversized PDFs
-  const text = buffer.subarray(0, maxBytes * 4).toString('latin1');
   const chunks: string[] = [];
   let totalLen = 0;
 
-  // Extract text between BT (begin text) and ET (end text) markers (bounded to 64KB per match)
-  const btEtRegex = /BT\s([\s\S]{0,65536}?)ET/g;
-  let match;
-  while ((match = btEtRegex.exec(text)) !== null && totalLen < maxBytes) {
-    const block = match[1];
-    // Extract text from Tj, TJ, and ' operators (bounded quantifiers to prevent ReDoS)
-    const tjRegex = /\(([^)]{0,4096})\)\s*Tj/g;
-    let tj;
-    while ((tj = tjRegex.exec(block)) !== null && totalLen < maxBytes) {
-      chunks.push(tj[1]);
-      totalLen += tj[1].length;
-    }
-    // TJ array: [(text) kern (text) kern ...] (bounded to 8KB per array)
-    const tjArrayRegex = /\[([^\]]{0,8192})\]\s*TJ/g;
-    let tja;
-    while ((tja = tjArrayRegex.exec(block)) !== null && totalLen < maxBytes) {
-      const innerRegex = /\(([^)]{0,4096})\)/g;
-      let inner;
-      while ((inner = innerRegex.exec(tja[1])) !== null) {
-        chunks.push(inner[1]);
-        totalLen += inner[1].length;
+  // Extract text from Tj/TJ operators inside BT/ET blocks of a source string.
+  // Bounded quantifiers throughout to prevent ReDoS; appends into the shared
+  // chunks/totalLen accumulators. Applied to both inflated and raw stream text.
+  function pushOperatorText(src: string): void {
+    // Extract text between BT (begin text) and ET (end text) markers (bounded to 64KB per match)
+    const btEtRegex = /BT\s([\s\S]{0,65536}?)ET/g;
+    let match;
+    while ((match = btEtRegex.exec(src)) !== null && totalLen < maxBytes) {
+      const block = match[1];
+      // Extract text from Tj, TJ, and ' operators (bounded quantifiers to prevent ReDoS)
+      const tjRegex = /\(([^)]{0,4096})\)\s*Tj/g;
+      let tj;
+      while ((tj = tjRegex.exec(block)) !== null && totalLen < maxBytes) {
+        chunks.push(tj[1]);
+        totalLen += tj[1].length;
+      }
+      // TJ array: [(text) kern (text) kern ...] (bounded to 8KB per array)
+      const tjArrayRegex = /\[([^\]]{0,8192})\]\s*TJ/g;
+      let tja;
+      while ((tja = tjArrayRegex.exec(block)) !== null && totalLen < maxBytes) {
+        const innerRegex = /\(([^)]{0,4096})\)/g;
+        let inner;
+        while ((inner = innerRegex.exec(tja[1])) !== null) {
+          chunks.push(inner[1]);
+          totalLen += inner[1].length;
+        }
       }
     }
   }
 
-  // Also scan for plain-text streams (bounded to 64KB per match to prevent ReDoS)
+  // ── FlateDecode streams: inflate compressed content streams so their text
+  // layer is scanned. Operate on the raw buffer for byte accuracy; non-flate /
+  // garbage streams throw on inflate and are skipped. Bounded by maxOutputLength
+  // per stream, a running inflatedTotal budget, and a hard iteration guard. ──
+  const inflatedChunks: string[] = [];
+  let inflatedTotal = 0;
+  const STREAM = Buffer.from('stream');
+  const ENDSTREAM = Buffer.from('endstream');
+  let searchFrom = 0;
+  let guard = 0;
+  while (inflatedTotal < maxBytes && guard++ < 4096) {
+    const sIdx = buffer.indexOf(STREAM, searchFrom);
+    if (sIdx < 0) break;
+    // stream keyword is followed by CRLF or LF
+    let dataStart = sIdx + STREAM.length;
+    if (buffer[dataStart] === 0x0d) dataStart++; // CR
+    if (buffer[dataStart] === 0x0a) dataStart++; // LF
+    const eIdx = buffer.indexOf(ENDSTREAM, dataStart);
+    if (eIdx < 0) break;
+    let dataEnd = eIdx;
+    // trim trailing EOL before endstream
+    if (buffer[dataEnd - 1] === 0x0a) dataEnd--;
+    if (buffer[dataEnd - 1] === 0x0d) dataEnd--;
+    const raw = buffer.subarray(dataStart, dataEnd);
+    searchFrom = eIdx + ENDSTREAM.length;
+    try {
+      const inflated = inflateSync(raw, { maxOutputLength: maxBytes });
+      const s = inflated.toString('latin1');
+      inflatedChunks.push(s);
+      inflatedTotal += s.length;
+    } catch {
+      // not a zlib/flate stream (or exceeded maxOutputLength) — skip it
+    }
+  }
+
+  // Slice buffer before regex to prevent ReDoS on oversized PDFs
+  const text = buffer.subarray(0, maxBytes * 4).toString('latin1');
+
+  // Operator extraction on inflated stream text first, then the raw latin1 text.
+  for (const s of inflatedChunks) {
+    if (totalLen >= maxBytes) break;
+    pushOperatorText(s);
+  }
+  pushOperatorText(text);
+
+  // Also scan for plain-text (uncompressed) streams (bounded to 64KB per match to prevent ReDoS)
   const streamRegex = /stream\r?\n([\s\S]{0,65536}?)endstream/g;
-  while ((match = streamRegex.exec(text)) !== null && totalLen < maxBytes) {
-    const stream = match[1];
+  let sm;
+  while ((sm = streamRegex.exec(text)) !== null && totalLen < maxBytes) {
+    const stream = sm[1];
     // Only include if it looks like readable text (>50% printable ASCII)
     const printable = stream.replace(/[^\x20-\x7E]/g, '');
     if (printable.length > 20 && printable.length / stream.length > 0.5) {
