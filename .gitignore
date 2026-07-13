@@ -15,3 +15,5 @@ pentest/results/*.json
 package-lock.json
 # Internal security audit reports — enumerate unfixed weaknesses; keep out of the public repo.
 SECURITY_AUDIT_*.md
+# Private strategy / product-concept notes — keep out of the public repo.
+docs/private/
