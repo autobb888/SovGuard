@@ -39,8 +39,11 @@ export class SovGuardEngine {
   /**
    * Scan a message for prompt injection attacks.
    */
-  async scan(message: string): Promise<ScanResult> {
-    const result = await scan(message, this.config);
+  async scan(message: string, opts?: { jobCategory?: string }): Promise<ScanResult> {
+    // Per-request jobCategory (e.g. 'code-review') merges over the engine config so
+    // the inbound scan can suppress code-content false-positives for code jobs.
+    const cfg = opts?.jobCategory ? { ...this.config, jobCategory: opts.jobCategory } : this.config;
+    const result = await scan(message, cfg);
     recordScan(result);
     return result;
   }

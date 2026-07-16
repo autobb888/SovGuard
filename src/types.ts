@@ -175,4 +175,8 @@ export interface SovGuardConfig {
   extraPatterns?: Array<{ pattern: RegExp; category: AttackCategory; severity: Severity }>;
   /** Configurable topic/policy rails for denied topics */
   topicRails?: TopicRailsConfig;
+  /** Job category (e.g. 'code-review'). For CODE_CATEGORIES the inbound regex layer
+   *  suppresses pure code-content matches (eval/subprocess/os.system/"run command:")
+   *  so ordinary review code is not flagged as injection. Injection/exfil patterns stay. */
+  jobCategory?: string;
 }

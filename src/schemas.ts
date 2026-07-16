@@ -9,6 +9,9 @@ export const ScanBody = z.object({
   text: z.string().min(1).max(50000),
   /** Optional session id — enables multi-turn crescendo detection (C4). */
   sessionId: z.string().min(1).max(256).optional(),
+  /** Optional job category — CODE_CATEGORIES suppress inbound code-content FPs so a
+   *  code-review job's code isn't flagged as injection (injection patterns stay active). */
+  jobCategory: z.string().min(1).max(256).optional(),
 });
 
 export const ScanFileBody = z.object({

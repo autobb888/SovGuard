@@ -76,7 +76,7 @@ app.addHook('preHandler', async (req, reply) => {
 
 app.post('/v1/scan', async (req) => {
   const body = ScanBody.parse(req.body);
-  const result = await engine.scan(body.text);
+  const result = await engine.scan(body.text, { jobCategory: body.jobCategory });
   const annotated = annotateVerdict(result, enforcementMode);
   if (body.sessionId) {
     const esc = sessionScorer.record(body.sessionId, result.score);

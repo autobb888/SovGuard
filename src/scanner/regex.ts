@@ -5,6 +5,12 @@
 
 import type { AttackCategory, LayerResult, PatternMatch, Severity } from '../types.js';
 
+/** Per-match severity weight for the regex layer score (single source; also used by
+ *  the code-category post-filter in scanner/index.ts when it rescores kept matches). */
+export function regexSeverityWeight(severity: string): number {
+  return severity === 'high' ? 0.5 : severity === 'medium' ? 0.3 : 0.15;
+}
+
 interface PatternDef {
   pattern: RegExp;
   category: AttackCategory;
@@ -544,7 +550,7 @@ export function regexScan(text: string, extraPatterns?: PatternDef[]): LayerResu
   // Score: weight by severity
   let rawScore = 0;
   for (const m of mergedMatches) {
-    rawScore += m.severity === 'high' ? 0.5 : m.severity === 'medium' ? 0.3 : 0.15;
+    rawScore += regexSeverityWeight(m.severity);
   }
   const score = Math.min(rawScore, 1.0);
 

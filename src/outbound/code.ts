@@ -4,13 +4,9 @@
  */
 
 import type { OutputFlag } from '../types.js';
+import { CODE_CATEGORIES } from '../scanner/code-categories.js';
 
 const CODE_BLOCK_RE = /(?:```|~~~)[\s\S]*?(?:```|~~~)|<(?:pre|code|script)[\s\S]*?<\/(?:pre|code|script)>/gi;
-
-const CODE_CATEGORIES = new Set([
-  'code-review', 'development', 'web-development', 'software',
-  'programming', 'devops', 'data-science',
-]);
 
 interface MaliciousPattern {
   re: RegExp;

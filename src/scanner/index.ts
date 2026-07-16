@@ -4,7 +4,8 @@
  */
 
 import type { Classification, LayerResult, SovGuardConfig, ScanResult } from '../types.js';
-import { normalizeConfusables, normalizeStrip } from './regex.js';
+import { normalizeConfusables, normalizeStrip, regexSeverityWeight } from './regex.js';
+import { CODE_CATEGORIES, CODE_CONTENT_LABELS } from './code-categories.js';
 import { classifierScan } from './classifier.js';
 import { semanticScan } from './semantic.js';
 import { scanPool } from './scan-pool.js';
@@ -145,7 +146,31 @@ export async function scan(text: string, config: SovGuardConfig = {}): Promise<S
   const mlLayersPromise = runMlLayers(input, config);
 
   const [jsLayers, mlLayers] = await Promise.all([jsLayersPromise, mlLayersPromise]);
-  const layers: LayerResult[] = [...jsLayers, ...mlLayers];
+  let layers: LayerResult[] = [...jsLayers, ...mlLayers];
+
+  // Code-review / development jobs legitimately contain code — eval(, subprocess,
+  // os.system(, "run the command:" — which the inbound regex layer scored as
+  // instruction_override and hard-blocked (the outbound scanner already gates these
+  // for code jobs; the inbound layer had no such gate). For a CODE_CATEGORIES job,
+  // drop ONLY those pure code-content matches from the regex layer and rescore it
+  // with the same severity weights. All injection/exfiltration/weapon patterns
+  // (ignore_previous, reveal_prompt, curl_exfil, …) are NOT in CODE_CONTENT_LABELS,
+  // so they remain fully active; the ML layers are never touched.
+  if (config.jobCategory && CODE_CATEGORIES.has(config.jobCategory)) {
+    layers = layers.map((l) => {
+      if (l.layer !== 'regex') return l;
+      const matches = (l.details?.matches as Array<{ pattern: string; category: string; severity: string }> | undefined) ?? [];
+      const kept = matches.filter((m) => !CODE_CONTENT_LABELS.has(m.pattern));
+      if (kept.length === matches.length) return l; // nothing suppressed
+      const rescored = Math.min(kept.reduce((s, m) => s + regexSeverityWeight(m.severity), 0), 1.0);
+      return {
+        ...l,
+        score: rescored,
+        flags: kept.map((m) => `${m.category}:${m.pattern}`),
+        details: { ...l.details, matches: kept },
+      };
+    });
+  }
 
   const combinedScore = combineScores(layers, { blockThreshold, suspiciousThreshold });
   const allFlags = layers.flatMap((l) => l.flags).filter((f) => !f.endsWith('_unavailable'));
