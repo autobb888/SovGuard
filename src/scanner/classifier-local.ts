@@ -6,7 +6,7 @@
  */
 
 import type { LayerResult } from '../types.js';
-import { existsSync } from 'node:fs';
+import { existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { inferenceGate } from './inference-gate.js';
 
@@ -48,13 +48,20 @@ async function ensureModel(): Promise<boolean> {
     // Load tokenizer from HuggingFace tokenizer.json (async in tokenizers >=0.13.4)
     tokenizer = await Tokenizer.fromFile(tokenizerPath);
     tokenizer.setTruncation(MAX_LENGTH);
-    tokenizer.setPadding({ maxLength: MAX_LENGTH, padId: 0, padToken: '[PAD]' });
+    // No padding: we infer one text at a time, and the tensors below are already
+    // shaped [1, ids.length]. Padding every input to MAX_LENGTH ran a 512-token
+    // forward pass for a 25-token prompt — ~20x the compute, for identical logits.
+    tokenizer.setPadding(null);
 
     // Create ONNX inference session
     session = await ort.InferenceSession.create(modelPath);
 
+    // `require` is not defined under ESM. This used to throw *after* modelLoaded
+    // was already set, so loadModel() returned false while the session was live:
+    // every process's first scan failed open to 0.00 and only later calls ran
+    // real inference. In a short-lived process, every scan is the first scan.
+    console.log(`[classifier-local] DeBERTa model loaded (${Math.round(statSync(modelPath).size / 1024 / 1024)}MB)`);
     modelLoaded = true;
-    console.log(`[classifier-local] DeBERTa model loaded (${Math.round(require('fs').statSync(modelPath).size / 1024 / 1024)}MB)`);
     return true;
   } catch (err) {
     loadError = err instanceof Error ? err.message : 'Unknown error loading ONNX model';

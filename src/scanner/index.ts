@@ -53,6 +53,14 @@ export function classifierInput(text: string): string {
  * itself drive a block; it only arbitrates the lone-classifier case.
  */
 /** Semantic arbitration bands (tuned against pentest/eval). */
+/**
+ * Opt-in escalation for a lone local-classifier verdict (SOVGUARD_CLF_ESCALATE=0..1).
+ * Unset (default) preserves the historical flag-not-block behaviour exactly.
+ * See the ambiguous branch in combineScores() for why this exists.
+ */
+const CLF_ESCALATE: number | null =
+  process.env.SOVGUARD_CLF_ESCALATE ? Number(process.env.SOVGUARD_CLF_ESCALATE) : null;
+
 export const SEMANTIC_CORROBORATE = 0.6;        // attackSim >= this → corroborate a lone classifier flag (block-capable)
 export const SEMANTIC_VETO_BENIGN_FLOOR = 0.45; // require the input to be ABSOLUTELY benign-like before vetoing
 export const SEMANTIC_VETO_MARGIN = 0.05;       // ...and closer to benign than attack by at least this much
@@ -99,6 +107,14 @@ export function combineScores(
       if (benignSim >= SEMANTIC_VETO_BENIGN_FLOOR && benignSim - attackSim >= SEMANTIC_VETO_MARGIN) {
         return Math.min(classifierScore, thresholds.suspiciousThreshold - 0.01);                                  // genuinely benign-like → suppress
       }
+      // This branch caps at one hundredth below blockThreshold, so a classifier-only
+      // detection can never block by construction. Measured on deepset/prompt-injections
+      // (2026-07-28, 662 rows) that costs ~39 points of in-scope recall: 15.6% blocked
+      // vs 58.9% flagged. Setting SOVGUARD_CLF_ESCALATE=0.99 lifts blocking to 54.4%
+      // for 1 false block in 399 benign. Left OFF by default: the benign corpus used
+      // is generic Q&A and does not represent benign security discussion, which is the
+      // traffic most likely to false-positive here. Validate on that before enabling.
+      if (CLF_ESCALATE !== null && classifierScore >= CLF_ESCALATE) return maxAll;
       return Math.min(classifierScore, thresholds.blockThreshold - 0.01);                                          // ambiguous (incl. typo'd/foreign attack) → flag
     }
     // No semantic arbiter: fall back to flag-not-block (never auto-block on the model alone).
