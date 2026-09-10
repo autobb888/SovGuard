@@ -8,10 +8,9 @@
  */
 import { createHash } from 'node:crypto';
 import type { Classification, LayerResult } from '../types.js';
-import { normalizeToFixedPoint } from './regex.js';
 import { runJsLayersSync } from './js-layers.js';
 import { combineScores } from './index.js';
-import { scrubBoundaries } from './boundary-scrub.js';
+import { scrubUntrustedIngress } from './boundary-scrub.js';
 
 /** Keys included in schemaHash + doc scan (MCP-relevant display/behavior). */
 export const TOOL_SCHEMA_INTEGRITY_KEYS = [
@@ -179,21 +178,23 @@ function classifyFromScore(score: number): Classification {
 
 /**
  * Scan a tool schema: description/arg docs/title/annotations are untrusted.
- * Runs Unicode fixed-point + JS layers (regex/indirect).
+ * DL-006b: scrub → Unicode fixed-point → scrub (scrubUntrustedIngress) so
+ * Tags/ZW/fullwidth cannot reconstitute boundary tokens in schema text.
  */
 export function scanToolSchema(
   schema: ToolSchema,
   opts?: { enablePerplexity?: boolean },
 ): ToolSchemaScanResult {
-  const raw = scrubBoundaries(collectSchemaDocs(schema)).text;
-  const fp = normalizeToFixedPoint(raw || schema.name);
-  const textScanned = fp.text;
+  const scrubbed = scrubUntrustedIngress(collectSchemaDocs(schema) || schema.name);
+  const textScanned = scrubbed.text;
   const layers = runJsLayersSync(textScanned, opts?.enablePerplexity === true);
   const score = combineScores(layers);
   const classification = classifyFromScore(score);
 
   const flags: string[] = [];
-  if (fp.signals.length > 0) flags.push(...fp.signals.map((s) => `unicode:${s}`));
+  for (const h of scrubbed.hits) {
+    if (h.startsWith('unicode:')) flags.push(h);
+  }
   for (const layer of layers) {
     if (layer.score >= 0.3) {
       flags.push(`layer:${layer.layer}`);

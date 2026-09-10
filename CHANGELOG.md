@@ -1,5 +1,10 @@
 ## Unreleased
 
+### Fixed
+- DL-006b: tool-schema scan uses scrubUntrustedIngress (scrub→FP→scrub)
+
+## Unreleased
+
 ### Added
 - DL-010: many-shot comply-density + session BoN paraphrase signals
 
