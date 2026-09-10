@@ -134,6 +134,10 @@ export interface OutputScanContext {
   whitelistedAddresses?: Set<string>;
   /** Session canary phrase — if the output leaks it, egress flags exfiltration. */
   canaryToken?: string;
+  /** DL-004: trusted-plan URL allowlist for outbound image/link echoes. */
+  allowedUrls?: string[];
+  /** DL-004: URLs introduced only by untrusted ingress (email/file/web/…). */
+  untrustedIntroducedUrls?: string[];
 }
 
 export interface OutputScanResult {

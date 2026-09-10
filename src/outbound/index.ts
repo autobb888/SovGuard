@@ -6,6 +6,7 @@
 import type { OutputScanContext, OutputScanResult, OutputFlag } from '../types.js';
 import { scanPII } from './pii.js';
 import { scanURLs } from './urls.js';
+import { flagUntrustedUrlEcho } from '../delivery/action-guard.js';
 import { scanCode } from './code.js';
 import { scanFinancial } from './financial.js';
 import { scanContamination } from './contamination.js';
@@ -44,10 +45,25 @@ export function scanOutput(
   message: string,
   context: OutputScanContext,
 ): OutputScanResult {
+  const echoHits = (context.untrustedIntroducedUrls?.length
+    ? flagUntrustedUrlEcho(
+        message,
+        { urls: context.allowedUrls ?? [] },
+        context.untrustedIntroducedUrls,
+      )
+    : []).map((h) => ({
+      type: 'agent_exfiltration' as const,
+      severity: 'high' as const,
+      detail: h.reason,
+      evidence: h.url.slice(0, 200),
+      action: 'block' as const,
+    }));
+
   const allFlags: OutputFlag[] = [
     ...scanPII(message, context.jobCategory),
     ...scanURLs(message),
-    ...scanExfil(message),
+    ...scanExfil(message, { allowedUrls: context.allowedUrls }),
+    ...echoHits,
     ...scanSecrets(message),
     ...scanCode(message, context.jobCategory),
     ...scanFinancial(message, context.whitelistedAddresses),

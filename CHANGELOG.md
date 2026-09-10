@@ -8,3 +8,6 @@
 
 ### Added
 - **DL-003:** SessionScorer wires `categoryDiversity` into `escalated`; Skeleton Key policy_rewrite + ack heuristics; `/v1/scan` and `/v1/wrap` non-advisory classification bump when session escalated. Residual FP: long benign research threads / soft ack phrases.
+
+### Added
+- **DL-004:** ActionGuard provenance API (`actionGuard`) — proposed tools/URLs must ⊆ trusted user plan; untrusted sources cannot expand the plan. Outbound exfil blocks markdown/HTML image URLs not on plan allowlist. See `docs/action-guard.md`.

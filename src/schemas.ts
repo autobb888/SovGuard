@@ -28,6 +28,9 @@ export const SourceTrustEnum = z.enum([
   'mcp_result',
   'api_response',
   'other_agent',
+  'email',
+  'web',
+  'file',
 ]);
 
 export const WrapBody = z.object({

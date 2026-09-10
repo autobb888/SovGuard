@@ -19,7 +19,10 @@ export type SourceTrust =
   | 'workspace_file'  // file content read into context
   | 'mcp_result'      // result returned from an MCP/tool call
   | 'api_response'    // an external API response folded into context
-  | 'other_agent';    // output from another agent
+  | 'other_agent'    // output from another agent
+  | 'email'          // inbound email / recipient-framed content
+  | 'web'            // fetched web content
+  | 'file';          // uploaded/attached file content
 
 /** What to do when UNTRUSTED content trips the scanner. */
 export type TaintPolicy = 'block' | 'strip' | 'quarantine';

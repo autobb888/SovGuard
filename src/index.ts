@@ -205,3 +205,6 @@ export { normalizeToFixedPoint, shouldEscalateUnicodeSignals, stripBidiOverrides
 export type { FixedPointNorm } from './scanner/regex.js';
 
 export { detectPolicyRewrite, detectPolicyAck, detectCrescendoProbe } from './scanner/skeleton-key.js';
+
+export { actionGuard, flagUntrustedUrlEcho, extractRemoteUrls, isUntrustedActionSource } from './delivery/action-guard.js';
+export type { TrustedPlan, ProposedAction, ActionGuardResult, DeniedAction } from './delivery/action-guard.js';
