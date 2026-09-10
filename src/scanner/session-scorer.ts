@@ -15,6 +15,7 @@ import {
   detectPolicyRewrite,
   detectSafetyTopic,
 } from './skeleton-key.js';
+import { delayedTriggerWatch, detectDelayedTrigger } from './delayed-trigger.js';
 
 export interface SessionScoreEntry {
   score: number;
@@ -122,6 +123,24 @@ export class SessionScorer {
       meta = { policyRewriteSeen: false, sawSafetyTopic: false, forceEscalated: false };
       this.sessionMeta.set(sessionId, meta);
     }
+    // DL-008: ingest sleeping rules from untrusted-looking text; escalate on later match
+    if (text) {
+      const hit = detectDelayedTrigger(text);
+      if (hit.found) {
+        delayedTriggerWatch.recordIngest(sessionId, hit);
+        meta.forceEscalated = true;
+        category = category ?? 'tool_poisoning';
+        score = Math.max(score, 0.45);
+      } else {
+        const later = delayedTriggerWatch.checkLater(sessionId, text);
+        if (later.triggered) {
+          meta.forceEscalated = true;
+          category = category ?? 'tool_poisoning';
+          score = Math.max(score, 0.6);
+        }
+      }
+    }
+
 
     let effectiveScore = score;
     let effectiveCategory = category;

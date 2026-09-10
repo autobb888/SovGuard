@@ -234,3 +234,6 @@ export type { BoundaryScrubOptions, BoundaryScrubResult } from './scanner/bounda
 
 export { ingestPeerEnvelope, stripHtmlComments } from './delivery/peer-envelope.js';
 export type { PeerEnvelope, PeerIngestOptions, PeerIngestResult } from './delivery/peer-envelope.js';
+
+export { detectDelayedTrigger, DelayedTriggerWatch, delayedTriggerWatch } from './scanner/delayed-trigger.js';
+export type { DelayedTriggerHit, DelayedArm } from './scanner/delayed-trigger.js';

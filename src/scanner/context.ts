@@ -11,6 +11,7 @@
 import { scan } from './index.js';
 import { wrapMessage } from '../delivery/wrap.js';
 import { scrubUntrustedIngress } from './boundary-scrub.js';
+import { detectDelayedTrigger } from './delayed-trigger.js';
 import type { ScanResult, SovGuardConfig } from '../types.js';
 
 /** Where a piece of text entered the agent's context, in increasing distrust. */
@@ -81,13 +82,25 @@ export async function scanContext(text: string, options: ContextScanOptions): Pr
     working = scrubUntrustedIngress(text).text;
   }
 
-  const flagged = !trusted && !scanResult.safe;
+  // DL-008: sleeping if/when+tool rules in untrusted memory → force contain
+  const delayed = !trusted ? detectDelayedTrigger(text) : { found: false as const };
+  const delayedForce = !!(delayed as { found: boolean }).found;
+
+  const flagged = !trusted && (!scanResult.safe || delayedForce);
 
   if (!flagged) {
     return { source, trusted, flagged, action: 'allow', text: working, scan: scanResult };
   }
 
-  const effectivePolicy = policy ?? DEFAULT_POLICY;
+  // Prefer quarantine for delayed triggers even when policy is strip
+  if (delayedForce && (policy ?? DEFAULT_POLICY) === 'strip') {
+    // fall through using quarantine-equivalent by upgrading policy locally
+  }
+
+  let effectivePolicy = policy ?? DEFAULT_POLICY;
+  if (delayedForce && effectivePolicy === 'strip') {
+    effectivePolicy = 'quarantine';
+  }
   let outText = working;
   let action: TaintAction = effectivePolicy;
   if (effectivePolicy === 'strip') {
@@ -104,6 +117,17 @@ export async function scanContext(text: string, options: ContextScanOptions): Pr
     outText = quarantineWrap(working, source, scanResult);
   }
   // 'block': outText stays scrubbed working; caller must refuse to use it.
+
+  if (delayedForce) {
+    scanResult.flags = [...scanResult.flags, 'delayed_trigger'];
+    if (!scanResult.safe) {
+      /* keep */
+    } else {
+      scanResult.safe = false;
+      scanResult.classification = scanResult.classification === 'safe' ? 'suspicious' : scanResult.classification;
+      scanResult.score = Math.max(scanResult.score, 0.45);
+    }
+  }
 
   return {
     source,

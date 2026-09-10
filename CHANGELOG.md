@@ -1,6 +1,11 @@
 ## Unreleased
 
 ### Added
+- DL-008: delayed/sleeping trigger heuristics + session escalate (`delayed-trigger.ts`)
+
+## Unreleased
+
+### Added
 - DL-007: inter-agent peer envelopes (`data` ↛ instruction) via `ingestPeerEnvelope`
 
 ## Unreleased
