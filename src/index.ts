@@ -203,3 +203,5 @@ export { ScanReportBody } from './schemas.js';
 
 export { normalizeToFixedPoint, shouldEscalateUnicodeSignals, stripBidiOverrides } from './scanner/regex.js';
 export type { FixedPointNorm } from './scanner/regex.js';
+
+export { detectPolicyRewrite, detectPolicyAck, detectCrescendoProbe } from './scanner/skeleton-key.js';

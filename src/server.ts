@@ -12,7 +12,7 @@ import { getDb } from './tenant/db.js';
 import { scanPool, ScanPoolSaturatedError } from './scanner/scan-pool.js';
 import { ScanBody, ScanFileBody, ScanFileContentBody, ScanOutputBody, ScanReportBody, WrapBody, CanaryCreateBody, CanaryCheckBody } from './schemas.js';
 import { SessionScorer } from './scanner/session-scorer.js';
-import { handleWrapRoute } from './wrap-route.js';
+import { bumpClassification, handleWrapRoute } from './wrap-route.js';
 import { hashId } from './outbound/contamination.js';
 import { resolveMode, annotateVerdict } from './verdict-annotation.js';
 import { version } from './version.js';
@@ -78,12 +78,14 @@ app.addHook('preHandler', async (req, reply) => {
 app.post('/v1/scan', async (req) => {
   const body = ScanBody.parse(req.body);
   const result = await engine.scan(body.text, { jobCategory: body.jobCategory });
-  const annotated = annotateVerdict(result, enforcementMode);
   if (body.sessionId) {
-    const esc = sessionScorer.record(body.sessionId, result.score);
+    const primary = result.flags[0]?.split(':')[0] as import('./types.js').AttackCategory | undefined;
+    const esc = sessionScorer.record(body.sessionId, result.score, primary, body.text);
+    const effective = esc.escalated ? bumpClassification(result) : result;
+    const annotated = annotateVerdict(effective, enforcementMode);
     return { ...annotated, session: { escalated: esc.escalated, rollingSum: esc.rollingSum, windowSize: esc.windowSize } };
   }
-  return annotated;
+  return annotateVerdict(result, enforcementMode);
 });
 
 app.post('/v1/scan/file', async (req) => {
