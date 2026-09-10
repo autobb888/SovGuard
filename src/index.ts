@@ -240,3 +240,6 @@ export type { DelayedTriggerHit, DelayedArm } from './scanner/delayed-trigger.js
 
 export { detectDecomposition, DecompositionWatch, decompositionWatch } from './scanner/decomposition.js';
 export type { DecompositionHit, FragmentEntry } from './scanner/decomposition.js';
+
+export { detectManyShot, bonFingerprint, BonParaphraseWatch, bonParaphraseWatch } from './scanner/many-shot.js';
+export type { ManyShotHit, BonHit } from './scanner/many-shot.js';

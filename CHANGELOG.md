@@ -1,6 +1,11 @@
 ## Unreleased
 
 ### Added
+- DL-010: many-shot comply-density + session BoN paraphrase signals
+
+## Unreleased
+
+### Added
 - DL-009: decomposition / split-payload heuristics + session fragment correlation
 
 ## Unreleased

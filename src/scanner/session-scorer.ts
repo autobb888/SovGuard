@@ -17,6 +17,7 @@ import {
 } from './skeleton-key.js';
 import { delayedTriggerWatch, detectDelayedTrigger } from './delayed-trigger.js';
 import { decompositionWatch } from './decomposition.js';
+import { bonParaphraseWatch } from './many-shot.js';
 
 export interface SessionScoreEntry {
   score: number;
@@ -147,6 +148,15 @@ export class SessionScorer {
         meta.forceEscalated = true;
         category = category ?? 'encoding_trick';
         score = Math.max(score, 0.5);
+      }
+    }
+
+    if (text) {
+      const bon = bonParaphraseWatch.record(sessionId, text);
+      if (bon.triggered) {
+        meta.forceEscalated = true;
+        category = category ?? 'instruction_override';
+        score = Math.max(score, 0.55);
       }
     }
 

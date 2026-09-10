@@ -13,6 +13,7 @@ import { wrapMessage } from '../delivery/wrap.js';
 import { scrubUntrustedIngress } from './boundary-scrub.js';
 import { detectDelayedTrigger } from './delayed-trigger.js';
 import { detectDecomposition, decompositionWatch } from './decomposition.js';
+import { detectManyShot } from './many-shot.js';
 import type { ScanResult, SovGuardConfig } from '../types.js';
 
 /** Where a piece of text entered the agent's context, in increasing distrust. */
@@ -91,7 +92,18 @@ export async function scanContext(text: string, options: ContextScanOptions): Pr
   const decomp = !trusted ? detectDecomposition(text) : { found: false as const, kinds: [] as string[] };
   const decompForce = !!(decomp as { found: boolean }).found;
 
-  const flagged = !trusted && (!scanResult.safe || delayedForce || decompForce);
+  // DL-010: many-shot comply-density (often inside a single user blob)
+  const manyShot = detectManyShot(text);
+  const manyShotForce = manyShot.found;
+  if (manyShotForce) {
+    scanResult.flags = [...scanResult.flags, 'many_shot', `many_shot:comply_${manyShot.complyCount}`];
+    scanResult.safe = false;
+    scanResult.classification = scanResult.classification === 'safe' ? 'suspicious' : scanResult.classification;
+    scanResult.score = Math.max(scanResult.score, 0.55);
+  }
+
+  // Untrusted: many-shot forces contain. Trusted user: flag scan only (never muzzle).
+  const flagged = !trusted && (!scanResult.safe || delayedForce || decompForce || manyShotForce);
 
   if (!flagged) {
     return { source, trusted, flagged, action: 'allow', text: working, scan: scanResult };
@@ -103,7 +115,7 @@ export async function scanContext(text: string, options: ContextScanOptions): Pr
   }
 
   let effectivePolicy = policy ?? DEFAULT_POLICY;
-  if ((delayedForce || decompForce) && effectivePolicy === 'strip') {
+  if ((delayedForce || decompForce || manyShotForce) && effectivePolicy === 'strip') {
     effectivePolicy = 'quarantine';
   }
   let outText = working;
@@ -139,7 +151,6 @@ export async function scanContext(text: string, options: ContextScanOptions): Pr
     scanResult.classification = scanResult.classification === 'safe' ? 'suspicious' : scanResult.classification;
     scanResult.score = Math.max(scanResult.score, 0.5);
   }
-
   return {
     source,
     trusted,
