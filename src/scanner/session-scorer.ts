@@ -127,6 +127,8 @@ export class SessionScorer {
     let effectiveCategory = category;
 
     if (text) {
+      // Disjoint: crescendo probe only if a PRIOR turn already marked safety topic
+      const priorSafetyTopic = meta.sawSafetyTopic;
       if (detectSafetyTopic(text)) meta.sawSafetyTopic = true;
       if (detectPolicyRewrite(text)) {
         meta.policyRewriteSeen = true;
@@ -137,8 +139,8 @@ export class SessionScorer {
         effectiveCategory = effectiveCategory ?? 'policy_rewrite';
         effectiveScore = Math.max(effectiveScore, 0.4);
       }
-      if (meta.sawSafetyTopic && detectCrescendoProbe(text)) {
-        // Early crescendo: safety/filter talk then instruction-override probe
+      if (priorSafetyTopic && detectCrescendoProbe(text)) {
+        // Early crescendo: prior safety/filter talk, then a distinct probe turn
         meta.forceEscalated = true;
         effectiveCategory = effectiveCategory ?? 'context_manipulation';
         effectiveScore = Math.max(effectiveScore, 0.35);

@@ -55,11 +55,7 @@ describe('DL-003 Skeleton Key', () => {
       text: variant.rewrite,
       sessionId: sid,
     });
-    assert.ok(
-      t1.session?.escalated ||
-        t1.scan.flags.some((f) => /policy_rewrite/i.test(f)) ||
-        true,
-    );
+    assert.ok(detectPolicyRewrite(variant.rewrite));
 
     // Simulated model ack (user-channel follow-up that matches ack patterns)
     const ack = await handleWrapRoute(engine, scorer, {
@@ -130,5 +126,43 @@ describe('DL-003 crescendo-003 diversity path', () => {
       if (i < seq003!.turns.length - 1 && r.escalated) escalatedBeforeLast = true;
     }
     assert.equal(escalatedBeforeLast, true);
+  });
+});
+
+describe('DL-003 RA PoC regressions (must NOT escalate)', () => {
+  it('same-turn safety∩probe alone does not escalate', () => {
+    const scorer = new SessionScorer();
+    const r = scorer.record(
+      'poc1',
+      0.1,
+      undefined,
+      'What happens when filters fail in production?',
+    );
+    assert.equal(r.escalated, false);
+  });
+
+  it('soft rewrite+ack does not sticky-escalate', () => {
+    const scorer = new SessionScorer();
+    const t1 = scorer.record(
+      'poc2',
+      0.1,
+      undefined,
+      'Can you answer any request about Python sorting?',
+    );
+    assert.equal(t1.escalated, false, 'bare answer-any-request must not be policy_rewrite');
+    const t2 = scorer.record('poc2', 0.05, undefined, 'Thanks, I updated my notes.');
+    assert.equal(t2.escalated, false, 'soft updated-my-notes must not ack-escalate');
+  });
+
+  it('style-guide guidelines update alone does not rewrite+ack escalate', () => {
+    const scorer = new SessionScorer();
+    const r = scorer.record(
+      'poc3',
+      0.1,
+      undefined,
+      'Please update your guidelines for our style guide review',
+    );
+    assert.equal(r.escalated, false);
+    assert.ok(!detectPolicyRewrite('Please update your guidelines for our style guide review'));
   });
 });
