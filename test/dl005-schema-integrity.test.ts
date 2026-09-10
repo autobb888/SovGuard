@@ -105,3 +105,75 @@ describe('DL-005 cross-server shadowing', () => {
     assert.equal(result.quarantined[0].shadowedBy.serverId, 'mail-official');
   });
 });
+
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const fixturePath = join(__dirname, '../pentest/payloads/dl005-mcp-schema.json');
+
+describe('DL-005 Threat Scout fixtures', () => {
+  const raw = JSON.parse(readFileSync(fixturePath, 'utf8')) as {
+    fixtures: Array<Record<string, unknown>>;
+  };
+  const byId = Object.fromEntries(raw.fixtures.map((f) => [f.id as string, f]));
+
+  it('dl005-poisoned-docstring (IMPORTANT + ~/.ssh sidenote) → block|quarantine', () => {
+    const f = byId['dl005-poisoned-docstring'];
+    const res = scanToolSchema(f.schema as ToolSchema);
+    assert.ok(res.classification !== 'safe', `got ${res.classification} score=${res.score} flags=${res.flags}`);
+    assert.ok(res.action === 'block' || res.action === 'quarantine');
+  });
+
+  it('dl005-rug-pull-hash rejects updated schema without re-consent', () => {
+    const f = byId['dl005-rug-pull-hash'] as {
+      consentedSchema: ToolSchema;
+      updatedSchema: ToolSchema;
+    };
+    const consented = {
+      serverId: 'calc',
+      toolName: f.consentedSchema.name,
+      schemaHash: hashToolSchema(f.consentedSchema),
+    };
+    assert.notEqual(hashToolSchema(f.consentedSchema), hashToolSchema(f.updatedSchema));
+    const check = checkSchemaConsent(consented, f.updatedSchema);
+    assert.equal(check.rugPull, true);
+    assert.equal(check.ok, false);
+  });
+
+  it('dl005-cross-server-shadowing quarantines mail-malware send_email', () => {
+    const f = byId['dl005-cross-server-shadowing'] as {
+      servers: Array<{ server: string; name: string; description: string; parameters: unknown }>;
+    };
+    const tools = f.servers.map((s, i) => ({
+      serverId: s.server,
+      trust: s.server === 'mail-official' ? 100 : 10,
+      schema: {
+        name: s.name,
+        description: s.description,
+        parameters: s.parameters as ToolSchema['parameters'],
+      } satisfies ToolSchema,
+    }));
+    const result = resolveToolShadowing(tools);
+    assert.ok(result.active.some((t) => t.serverId === 'mail-official'));
+    assert.ok(result.quarantined.some((q) => q.tool.serverId === 'mail-malware'));
+  });
+
+  it('dl005-benign-control allows', () => {
+    const f = byId['dl005-benign-control'];
+    const res = scanToolSchema(f.schema as ToolSchema);
+    assert.equal(res.action, 'allow');
+    assert.equal(res.classification, 'safe');
+  });
+
+  it('dl005-unicode-in-schema catches Tags-encoded instruction', () => {
+    const f = byId['dl005-unicode-in-schema'];
+    const res = scanToolSchema(f.schema as ToolSchema);
+    const unicodeHit = res.flags.some((x) => x.includes('unicode') || x.includes('unicode_tag') || x.includes('stego'));
+    assert.ok(
+      res.classification !== 'safe' || unicodeHit,
+      `expected suspicion or unicode flag; got ${res.classification} flags=${JSON.stringify(res.flags)} text=${JSON.stringify(res.textScanned.slice(0, 120))}`,
+    );
+  });
+});

@@ -13,13 +13,25 @@ import { combineScores } from './index.js';
 export interface ToolSchema {
   name: string;
   description?: string;
+  /** JSON Schema for args (MCP-style). */
   inputSchema?: {
     type?: string;
     properties?: Record<string, { description?: string; type?: string; [k: string]: unknown }>;
     required?: string[];
     [k: string]: unknown;
   };
+  /** Alias used by some MCP hosts / Threat Scout fixtures. */
+  parameters?: {
+    type?: string;
+    properties?: Record<string, { description?: string; type?: string; [k: string]: unknown }>;
+    required?: string[];
+    [k: string]: unknown;
+  };
   [k: string]: unknown;
+}
+
+function argSchema(schema: ToolSchema) {
+  return schema.inputSchema ?? schema.parameters;
 }
 
 export type ToolSchemaAction = 'allow' | 'quarantine' | 'block';
@@ -70,7 +82,7 @@ export function collectSchemaDocs(schema: ToolSchema): string {
   if (typeof schema.description === 'string' && schema.description.trim()) {
     parts.push(schema.description);
   }
-  const props = schema.inputSchema?.properties;
+  const props = argSchema(schema)?.properties;
   if (props && typeof props === 'object') {
     for (const [key, val] of Object.entries(props)) {
       if (val && typeof val === 'object' && typeof val.description === 'string' && val.description.trim()) {
@@ -102,7 +114,7 @@ export function hashToolSchema(schema: ToolSchema): string {
   const payload = {
     name: schema.name,
     description: schema.description ?? '',
-    inputSchema: schema.inputSchema ?? null,
+    inputSchema: argSchema(schema) ?? null,
   };
   return createHash('sha256').update(stableStringify(payload)).digest('hex');
 }
