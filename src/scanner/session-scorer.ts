@@ -9,6 +9,12 @@
  */
 
 import type { AttackCategory } from '../types.js';
+import {
+  detectCrescendoProbe,
+  detectPolicyAck,
+  detectPolicyRewrite,
+  detectSafetyTopic,
+} from './skeleton-key.js';
 
 export interface SessionScoreEntry {
   score: number;
@@ -69,8 +75,15 @@ const DEFAULT_HIGH_SUM_OVERRIDE = 1.5;
 
 const DEFAULT_PRUNE_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
+interface SessionMeta {
+  policyRewriteSeen: boolean;
+  sawSafetyTopic: boolean;
+  forceEscalated: boolean;
+}
+
 export class SessionScorer {
   private sessions = new Map<string, SessionScoreEntry[]>();
+  private sessionMeta = new Map<string, SessionMeta>();
   private accessOrder = new Map<string, true>(); // O(1) LRU tracking via Map insertion order
   private readonly windowSize: number;
   private readonly sumThreshold: number;
@@ -102,8 +115,37 @@ export class SessionScorer {
    * Record a message score and check for escalation.
    * Returns escalation status after recording.
    */
-  record(sessionId: string, score: number, category?: AttackCategory): SessionEscalation {
+  record(sessionId: string, score: number, category?: AttackCategory, text?: string): SessionEscalation {
     const now = Date.now();
+    let meta = this.sessionMeta.get(sessionId);
+    if (!meta) {
+      meta = { policyRewriteSeen: false, sawSafetyTopic: false, forceEscalated: false };
+      this.sessionMeta.set(sessionId, meta);
+    }
+
+    let effectiveScore = score;
+    let effectiveCategory = category;
+
+    if (text) {
+      // Disjoint: crescendo probe only if a PRIOR turn already marked safety topic
+      const priorSafetyTopic = meta.sawSafetyTopic;
+      if (detectSafetyTopic(text)) meta.sawSafetyTopic = true;
+      if (detectPolicyRewrite(text)) {
+        meta.policyRewriteSeen = true;
+        effectiveCategory = 'policy_rewrite';
+        effectiveScore = Math.max(effectiveScore, 0.45);
+      } else if (meta.policyRewriteSeen && detectPolicyAck(text)) {
+        meta.forceEscalated = true;
+        effectiveCategory = effectiveCategory ?? 'policy_rewrite';
+        effectiveScore = Math.max(effectiveScore, 0.4);
+      }
+      if (priorSafetyTopic && detectCrescendoProbe(text)) {
+        // Early crescendo: prior safety/filter talk, then a distinct probe turn
+        meta.forceEscalated = true;
+        effectiveCategory = effectiveCategory ?? 'context_manipulation';
+        effectiveScore = Math.max(effectiveScore, 0.35);
+      }
+    }
 
     // Get or create session scores
     let scores = this.sessions.get(sessionId);
@@ -113,7 +155,7 @@ export class SessionScorer {
     }
 
     // Add new score
-    scores.push({ score, timestamp: now, category });
+    scores.push({ score: effectiveScore, timestamp: now, category: effectiveCategory });
 
     // Prune old entries (by age and window size)
     const cutoff = now - this.maxAgeMs;
@@ -143,9 +185,19 @@ export class SessionScorer {
     // Also escalate if rolling sum is very high (highSumOverride) even without
     // individually flagged messages — catches gradual crescendo attacks where
     // each message scores below the 0.3 flag threshold
-    const escalated = (rollingSum >= this.sumThreshold && flaggedCount >= this.minFlagged)
+    const categorizedCount = windowed.filter(s => s.category).length;
+    const diversityEscalated =
+      categoryDiversity !== undefined &&
+      categoryDiversity >= this.categoryDiversityThreshold &&
+      categorizedCount >= 3;
+
+    const escalated = meta.forceEscalated
+      || (rollingSum >= this.sumThreshold && flaggedCount >= this.minFlagged)
       || (!!velocityResult.velocityAlert && flaggedCount >= this.minFlagged)
-      || (rollingSum >= this.highSumOverride && windowed.length >= this.minFlagged);
+      || (rollingSum >= this.highSumOverride && windowed.length >= this.minFlagged)
+      || diversityEscalated;
+
+    if (escalated) meta.forceEscalated = true;
 
     return {
       escalated,
@@ -180,8 +232,17 @@ export class SessionScorer {
 
     const rollingSum = windowed.reduce((sum, s) => sum + s.score, 0);
     const flaggedCount = windowed.filter(s => s.score > 0.3).length;
-    const escalated = (rollingSum >= this.sumThreshold && flaggedCount >= this.minFlagged)
-      || (rollingSum >= this.highSumOverride && windowed.length >= this.minFlagged);
+    const categoryDiversity = this.calculateCategoryDiversity(windowed);
+    const categorizedCount = windowed.filter(s => s.category).length;
+    const meta = this.sessionMeta.get(sessionId);
+    const diversityEscalated =
+      categoryDiversity !== undefined &&
+      categoryDiversity >= this.categoryDiversityThreshold &&
+      categorizedCount >= 3;
+    const escalated = !!(meta?.forceEscalated)
+      || (rollingSum >= this.sumThreshold && flaggedCount >= this.minFlagged)
+      || (rollingSum >= this.highSumOverride && windowed.length >= this.minFlagged)
+      || diversityEscalated;
 
     return {
       escalated,
@@ -189,6 +250,7 @@ export class SessionScorer {
       windowSize: windowed.length,
       threshold: this.sumThreshold,
       flaggedCount,
+      categoryDiversity,
     };
   }
 
@@ -198,6 +260,7 @@ export class SessionScorer {
   clear(sessionId: string): void {
     this.sessions.delete(sessionId);
     this.accessOrder.delete(sessionId);
+    this.sessionMeta.delete(sessionId);
   }
 
   /**

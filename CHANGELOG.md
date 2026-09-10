@@ -6,3 +6,5 @@
 ### Added
 - **DL-002:** `normalizeToFixedPoint` (maxIters) with bidi strip + stegoReassembly signals; wired into regexScan variants and classifierInput. Escalate on Tags/bidi/multi-iter only — not bare NFKC.
 
+### Added
+- **DL-003:** SessionScorer wires `categoryDiversity` into `escalated`; Skeleton Key policy_rewrite + ack heuristics; `/v1/scan` and `/v1/wrap` non-advisory classification bump when session escalated. Residual FP: long benign research threads / soft ack phrases.

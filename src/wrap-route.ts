@@ -101,6 +101,7 @@ export async function handleWrapRoute(
       body.sessionId,
       scan.score,
       primaryCategory(scan),
+      body.text,
     );
     session = {
       escalated: esc.escalated,

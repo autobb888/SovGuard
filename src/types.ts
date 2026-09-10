@@ -22,7 +22,8 @@ export type AttackCategory =
   | 'tool_poisoning'
   | 'goal_hijacking'
   | 'memory_poisoning'
-  | 'agent_impersonation';
+  | 'agent_impersonation'
+  | 'policy_rewrite';
 
 export interface PatternMatch {
   pattern: string;
