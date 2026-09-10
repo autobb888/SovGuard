@@ -10,6 +10,7 @@
 
 import { scan } from './index.js';
 import { wrapMessage } from '../delivery/wrap.js';
+import { scrubBoundaries } from './boundary-scrub.js';
 import type { ScanResult, SovGuardConfig } from '../types.js';
 
 /** Where a piece of text entered the agent's context, in increasing distrust. */
@@ -72,29 +73,36 @@ export async function scanContext(text: string, options: ContextScanOptions): Pr
   const { source, policy, ...config } = options;
   const scanResult = await scan(text, config);
   const trusted = TRUSTED_SOURCES.has(source);
+
+  // DL-006: neutralize forged boundary/special tokens on untrusted ingress only.
+  let working = text;
+  if (!trusted) {
+    working = scrubBoundaries(text).text;
+  }
+
   const flagged = !trusted && !scanResult.safe;
 
   if (!flagged) {
-    return { source, trusted, flagged, action: 'allow', text, scan: scanResult };
+    return { source, trusted, flagged, action: 'allow', text: working, scan: scanResult };
   }
 
   const effectivePolicy = policy ?? DEFAULT_POLICY;
-  let outText = text;
+  let outText = working;
   let action: TaintAction = effectivePolicy;
   if (effectivePolicy === 'strip') {
-    const stripped = stripInjection(text, scanResult);
-    if (stripped === text) {
+    const stripped = stripInjection(working, scanResult);
+    if (stripped === working) {
       // Nothing localizable to redact (e.g. an encoded payload). Don't pass it
       // through unchanged — degrade to quarantine so it's still neutralized.
-      outText = quarantineWrap(text, source, scanResult);
+      outText = quarantineWrap(working, source, scanResult);
       action = 'quarantine';
     } else {
       outText = stripped;
     }
   } else if (effectivePolicy === 'quarantine') {
-    outText = quarantineWrap(text, source, scanResult);
+    outText = quarantineWrap(working, source, scanResult);
   }
-  // 'block' leaves outText = text; the caller is expected to refuse to use it.
+  // 'block': outText stays scrubbed working; caller must refuse to use it.
 
   return {
     source,

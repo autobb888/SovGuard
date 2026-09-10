@@ -1,6 +1,7 @@
 ## Unreleased
 
 ### Added
+- DL-006: boundary/special-token scrub on untrusted scanContext paths (`src/scanner/boundary-scrub.ts`)
 - DL-005: `scanToolSchema` / schemaHash consent / rug_pull / cross-server shadowing (`src/scanner/tool-schema.ts`)
 
 

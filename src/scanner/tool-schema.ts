@@ -11,6 +11,7 @@ import type { Classification, LayerResult } from '../types.js';
 import { normalizeToFixedPoint } from './regex.js';
 import { runJsLayersSync } from './js-layers.js';
 import { combineScores } from './index.js';
+import { scrubBoundaries } from './boundary-scrub.js';
 
 /** Keys included in schemaHash + doc scan (MCP-relevant display/behavior). */
 export const TOOL_SCHEMA_INTEGRITY_KEYS = [
@@ -184,7 +185,7 @@ export function scanToolSchema(
   schema: ToolSchema,
   opts?: { enablePerplexity?: boolean },
 ): ToolSchemaScanResult {
-  const raw = collectSchemaDocs(schema);
+  const raw = scrubBoundaries(collectSchemaDocs(schema)).text;
   const fp = normalizeToFixedPoint(raw || schema.name);
   const textScanned = fp.text;
   const layers = runJsLayersSync(textScanned, opts?.enablePerplexity === true);
