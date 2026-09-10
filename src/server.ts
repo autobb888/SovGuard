@@ -12,6 +12,7 @@ import { getDb } from './tenant/db.js';
 import { scanPool, ScanPoolSaturatedError } from './scanner/scan-pool.js';
 import { ScanBody, ScanFileBody, ScanFileContentBody, ScanOutputBody, ScanReportBody, WrapBody, CanaryCreateBody, CanaryCheckBody } from './schemas.js';
 import { SessionScorer } from './scanner/session-scorer.js';
+import { handleWrapRoute } from './wrap-route.js';
 import { hashId } from './outbound/contamination.js';
 import { resolveMode, annotateVerdict } from './verdict-annotation.js';
 import { version } from './version.js';
@@ -123,15 +124,25 @@ app.post('/v1/scan/output', async (req) => {
   return annotateVerdict(result, enforcementMode, 0.6);
 });
 
-app.post('/v1/wrap', async (req) => {
+app.post('/v1/wrap', async (req, reply) => {
   const body = WrapBody.parse(req.body);
-  const scanResult = await engine.scan(body.text);
-  const wrapped = engine.wrap(body.text, scanResult, {
-    role: body.role,
-    jobId: body.jobId,
-    sessionId: body.sessionId,
-  });
-  return { scan: scanResult, wrapped };
+  const result = await handleWrapRoute(engine, sessionScorer, body);
+  if (result.statusCode) {
+    return reply.status(result.statusCode).send({
+      error: result.error,
+      action: result.action,
+      scan: result.scan,
+      notify: result.notify,
+    });
+  }
+  return {
+    scan: result.scan,
+    wrapped: result.wrapped,
+    ...(result.action ? { action: result.action } : {}),
+    ...(result.notify ? { notify: result.notify } : {}),
+    ...(result.session ? { session: result.session } : {}),
+    ...(result.canary ? { canary: result.canary } : {}),
+  };
 });
 
 app.post('/v1/canary/create', {

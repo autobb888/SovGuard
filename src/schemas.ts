@@ -21,11 +21,23 @@ export const ScanFileBody = z.object({
     .optional(),
 });
 
+export const SourceTrustEnum = z.enum([
+  'user',
+  'job_description',
+  'workspace_file',
+  'mcp_result',
+  'api_response',
+  'other_agent',
+]);
+
 export const WrapBody = z.object({
   text: z.string().min(1).max(50000),
   role: z.string().min(1).max(256).optional(),
   jobId: z.string().min(1).max(256).optional(),
   sessionId: z.string().min(1).max(256).optional(),
+  /** When set, /v1/wrap runs scanContext first (containment by source/policy). */
+  source: SourceTrustEnum.optional(),
+  policy: z.enum(['block', 'strip', 'quarantine']).optional(),
 });
 
 export const CanaryCreateBody = z.object({ sessionId: z.string().min(1).max(256) });
