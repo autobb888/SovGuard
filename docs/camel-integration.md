@@ -293,3 +293,32 @@ async function processWithSessionTracking(sessionId: string, message: string) {
 - [DataFilter: Test-time Defense via LLM Rewriting](https://arxiv.org/abs/2401.12345) — ASR 2.2%
 - [OWASP Top 10 for LLM Applications](https://owasp.org/www-project-top-10-for-large-language-model-applications/)
 - SovGuard architecture: see `src/scanner/index.ts` for the 6-layer pipeline
+
+---
+
+## Part 3: scanContext + wrap with source (DL-001)
+
+Untrusted ingress (MCP results, files, other agents) should go through `scanContext` before delivery. Quarantine now uses Spotlight (`USER_DATA_<nonce>` markers + escape), and `/v1/wrap` accepts optional `source` / `policy` plus `sessionId` for SessionScorer + auto-canary.
+
+```typescript
+import { SovGuardEngine } from '@sovguard/engine';
+
+const engine = new SovGuardEngine();
+
+// Library: contain untrusted tool output
+const ctx = await engine.scanContext(mcpPayload, {
+  source: 'mcp_result',
+  policy: 'quarantine', // or 'strip' | 'block'
+});
+if (ctx.action === 'block') throw new Error('refusing tainted MCP result');
+// ctx.text is Spotlight-wrapped when quarantined (randomized USER_DATA markers)
+
+// HTTP: POST /v1/wrap
+// {
+//   "text": "...",
+//   "source": "mcp_result",
+//   "policy": "strip",
+//   "sessionId": "job-123"
+// }
+// → scanContext → wrap sanitized; if sessionId set, SessionScorer.record + createCanary
+```
