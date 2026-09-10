@@ -200,3 +200,6 @@ export { scanTopics } from './scanner/topic-rails.js';
 export type { TopicRailsConfig, DeniedTopic, TopicMatch } from './scanner/topic-rails.js';
 export { getDb, setDb, closeDb } from './tenant/db.js';
 export { ScanReportBody } from './schemas.js';
+
+export { normalizeToFixedPoint, shouldEscalateUnicodeSignals, stripBidiOverrides } from './scanner/regex.js';
+export type { FixedPointNorm } from './scanner/regex.js';
