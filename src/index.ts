@@ -231,3 +231,6 @@ export type {
 
 export { scrubBoundaries, scrubUntrustedIngress, neutralizeBoundaryToken, hasRawBoundaryToken, DEFAULT_BOUNDARY_PATTERNS } from './scanner/boundary-scrub.js';
 export type { BoundaryScrubOptions, BoundaryScrubResult } from './scanner/boundary-scrub.js';
+
+export { ingestPeerEnvelope, stripHtmlComments } from './delivery/peer-envelope.js';
+export type { PeerEnvelope, PeerIngestOptions, PeerIngestResult } from './delivery/peer-envelope.js';
