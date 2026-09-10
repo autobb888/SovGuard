@@ -10,7 +10,7 @@
 
 import { scan } from './index.js';
 import { wrapMessage } from '../delivery/wrap.js';
-import { scrubBoundaries } from './boundary-scrub.js';
+import { scrubUntrustedIngress } from './boundary-scrub.js';
 import type { ScanResult, SovGuardConfig } from '../types.js';
 
 /** Where a piece of text entered the agent's context, in increasing distrust. */
@@ -74,10 +74,11 @@ export async function scanContext(text: string, options: ContextScanOptions): Pr
   const scanResult = await scan(text, config);
   const trusted = TRUSTED_SOURCES.has(source);
 
-  // DL-006: neutralize forged boundary/special tokens on untrusted ingress only.
+  // DL-006: scrub → Unicode fixed-point → scrub on untrusted ingress only
+  // so Tags/ZW/fullwidth cannot reconstitute delimiters after one pass.
   let working = text;
   if (!trusted) {
-    working = scrubBoundaries(text).text;
+    working = scrubUntrustedIngress(text).text;
   }
 
   const flagged = !trusted && !scanResult.safe;
