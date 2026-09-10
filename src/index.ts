@@ -212,6 +212,7 @@ export { urlOnTrustedAllowlist, normalizeUrlPathname } from './delivery/action-g
 
 export {
   scanToolSchema,
+  TOOL_SCHEMA_INTEGRITY_KEYS,
   hashToolSchema,
   collectSchemaDocs,
   checkSchemaConsent,

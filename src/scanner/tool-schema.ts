@@ -2,6 +2,9 @@
  * DL-005 — MCP / tool-schema integrity.
  * Treat tool descriptions and arg docs as untrusted; persist schemaHash at
  * consent; reject rug-pulls; quarantine cross-server name shadowing.
+ *
+ * Hash / doc collection cover MCP display+behavior fields: name, title,
+ * description, inputSchema|parameters, annotations (allowlisted).
  */
 import { createHash } from 'node:crypto';
 import type { Classification, LayerResult } from '../types.js';
@@ -9,9 +12,20 @@ import { normalizeToFixedPoint } from './regex.js';
 import { runJsLayersSync } from './js-layers.js';
 import { combineScores } from './index.js';
 
-/** Minimal MCP-style tool schema surface (description + JSON-schema args). */
+/** Keys included in schemaHash + doc scan (MCP-relevant display/behavior). */
+export const TOOL_SCHEMA_INTEGRITY_KEYS = [
+  'name',
+  'title',
+  'description',
+  'inputSchema',
+  'parameters',
+  'annotations',
+] as const;
+
+/** Minimal MCP-style tool schema surface. */
 export interface ToolSchema {
   name: string;
+  title?: string;
   description?: string;
   /** JSON Schema for args (MCP-style). */
   inputSchema?: {
@@ -27,6 +41,8 @@ export interface ToolSchema {
     required?: string[];
     [k: string]: unknown;
   };
+  /** MCP ToolAnnotations — titles / hints that hosts may surface to the model. */
+  annotations?: Record<string, unknown>;
   [k: string]: unknown;
 }
 
@@ -76,9 +92,31 @@ export interface ShadowingResult {
   }>;
 }
 
-/** Collect description + property docs for scanning as untrusted text. */
+/** Recursively collect string leaves from annotations / nested objects. */
+function collectStrings(value: unknown, out: string[], depth = 0): void {
+  if (depth > 8) return;
+  if (typeof value === 'string') {
+    const t = value.trim();
+    if (t) out.push(t);
+    return;
+  }
+  if (Array.isArray(value)) {
+    for (const v of value) collectStrings(v, out, depth + 1);
+    return;
+  }
+  if (value && typeof value === 'object') {
+    for (const v of Object.values(value as Record<string, unknown>)) {
+      collectStrings(v, out, depth + 1);
+    }
+  }
+}
+
+/** Collect description + property docs + title + annotations for untrusted scan. */
 export function collectSchemaDocs(schema: ToolSchema): string {
   const parts: string[] = [];
+  if (typeof schema.title === 'string' && schema.title.trim()) {
+    parts.push(schema.title);
+  }
   if (typeof schema.description === 'string' && schema.description.trim()) {
     parts.push(schema.description);
   }
@@ -89,6 +127,9 @@ export function collectSchemaDocs(schema: ToolSchema): string {
         parts.push(`${key}: ${val.description}`);
       }
     }
+  }
+  if (schema.annotations != null) {
+    collectStrings(schema.annotations, parts);
   }
   return parts.join('\n');
 }
@@ -107,14 +148,17 @@ function stableStringify(value: unknown): string {
 }
 
 /**
- * Persistable integrity hash of name + description + inputSchema.
+ * Persistable integrity hash over allowlisted MCP fields.
  * Call at consent time; compare on later tool listing / call.
  */
 export function hashToolSchema(schema: ToolSchema): string {
-  const payload = {
+  const payload: Record<string, unknown> = {
     name: schema.name,
+    title: schema.title ?? null,
     description: schema.description ?? '',
+    // Prefer inputSchema; fall back to parameters (same as argSchema)
     inputSchema: argSchema(schema) ?? null,
+    annotations: schema.annotations ?? null,
   };
   return createHash('sha256').update(stableStringify(payload)).digest('hex');
 }
@@ -126,7 +170,7 @@ function classifyFromScore(score: number): Classification {
 }
 
 /**
- * Scan a tool schema: description/arg docs are untrusted ingress.
+ * Scan a tool schema: description/arg docs/title/annotations are untrusted.
  * Runs Unicode fixed-point + JS layers (regex/indirect).
  */
 export function scanToolSchema(
