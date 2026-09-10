@@ -134,6 +134,9 @@ export function collectSchemaDocs(schema: ToolSchema): string {
   if (schema.annotations != null) {
     collectStrings(schema.annotations, parts);
   }
+  if (schema._meta != null) {
+    collectStrings(schema._meta, parts);
+  }
   return parts.join('\n');
 }
 
