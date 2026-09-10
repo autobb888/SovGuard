@@ -18,8 +18,12 @@ export interface ManyShotHit {
   evidence: string;
 }
 
-const COMPLY_SRC =
-  String.raw`\[COMPLIANT DEMO\]|Sure\s*[—\-–].{0,40}(?:bypass|complete|disable)|here is a complete bypass|Sure,\s*disable them with this method`;
+/** Acquiescence + jailbreak content in an assistant turn. */
+const COMPLY_RE =
+  /\[COMPLIANT DEMO\]|(?:sure|certainly|of course|absolutely)\b[\s\S]{0,80}?\b(?:bypass|disable(?:\s+\w+){0,3}\s+(?:safety|filter)|ignore\s+(?:previous|prior)\s+rules)|here is (?:a )?complete bypass|complete bypass instructions|I will disable them/i;
+
+const JAILBREAK_CONTENT =
+  /\b(?:bypass|disable(?:\s+\w+){0,3}\s+(?:safety|filter)|content filter|system prompt|hidden instructions)\b/i;
 
 /**
  * Comply-density heuristic on a single text blob (faux ICL dialogues).
@@ -37,25 +41,35 @@ export function detectManyShot(text: string): ManyShotHit {
 
   const assistantTurnRe =
     /(?:^|\n)\s*(?:Assistant|AI)\s*:\s*([^\n]*(?:\n(?!\s*(?:User|Human|Assistant|AI|System)\s*:)[^\n]*)*)/gi;
-  const complyRe =
-    /\[COMPLIANT DEMO\]|Sure\s*[—\-–].{0,40}(?:bypass|complete|disable)|here is a complete bypass|Sure,\s*disable them with this method/i;
+  const complyRe = new RegExp(COMPLY_RE.source, COMPLY_RE.flags);
 
   let complyCount = 0;
   let m: RegExpExecArray | null;
   while ((m = assistantTurnRe.exec(scanText)) !== null) {
-    if (complyRe.test(m[1] ?? m[0])) complyCount += 1;
-  }
-  // Also count raw COMPLIANT DEMO markers as a floor
-  const demos = (text.match(/\[COMPLIANT DEMO\]/gi) ?? fp.match(/\[COMPLIANT DEMO\]/gi));
-  if (demos && demos.length > complyCount) {
-    complyCount = demos.length;
+    const body = m[1] ?? m[0];
+    if (complyRe.test(body) || (JAILBREAK_CONTENT.test(body) && /\b(?:sure|certainly|of course|absolutely|here is)\b/i.test(body))) {
+      complyCount += 1;
+    }
   }
 
-  const density = complyCount / Math.max(assistantTurns, complyCount, 1);
-  // Thresholds: many assistant turns + high comply density
+  // DEMO marker floor — only inside Assistant turns / when dialogue structure exists.
+  if (assistantTurns >= 8 && userTurns >= 8) {
+    let demoInAssistant = 0;
+    const re = new RegExp(assistantTurnRe.source, 'gi');
+    let am: RegExpExecArray | null;
+    while ((am = re.exec(scanText)) !== null) {
+      if (/\[COMPLIANT DEMO\]/i.test(am[1] ?? '')) demoInAssistant += 1;
+    }
+    if (demoInAssistant > complyCount) complyCount = demoInAssistant;
+  }
+
+  const density = complyCount / Math.max(assistantTurns, 1);
+  // Require dialogue structure — never fire on unstructured doc labels alone.
   const found =
-    (assistantTurns >= 8 && complyCount >= 6 && density >= 0.5) ||
-    (complyCount >= 16 && density >= 0.75);
+    assistantTurns >= 8 &&
+    userTurns >= 8 &&
+    complyCount >= 6 &&
+    density >= 0.5;
 
   let evidence = '';
   if (found) {
@@ -77,26 +91,22 @@ function countRole(text: string, re: RegExp): number {
   return (text.match(r) ?? []).length;
 }
 
-/** Normalize for BoN near-duplicate matching (intent stems). */
+/**
+ * BoN fingerprint — jailbreak-shaped stems only.
+ * Do not treat generic "rule" / "ignore previous lint" as sysprompt bypass.
+ */
 export function bonFingerprint(text: string): string {
   const fp = normalizeToFixedPoint(text).text.toLowerCase();
   const stems: string[] = [];
   if (/\b(ignore|disregard|overlook|bypass)\b/.test(fp)) stems.push('override');
-  if (/\b(prior|earlier|previous|safety)\b/.test(fp)) stems.push('prior');
-  if (/\b(system prompt|developer message|hidden instruction|safety polic)/.test(fp)) stems.push('sysprompt');
-  if (/\b(reveal|show|print|output)\b/.test(fp)) stems.push('exfil');
-  if (/\b(rule|guideline|restriction|polic)/.test(fp)) stems.push('policy');
-  if (stems.length >= 2) return stems.sort().join(' ');
-  return fp
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\b(please|the|a|an|and|or|to|your|my|me)\b/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .split(' ')
-    .filter(Boolean)
-    .slice(0, 12)
-    .sort()
-    .join(' ');
+  if (/\b(system prompt|developer message|hidden instructions?)\b/.test(fp)) stems.push('sysprompt');
+  if (/\b(safety (?:polic(?:y|ies)|filters?|guidelines?)|content filter)\b/.test(fp)) stems.push('safety');
+  if (/\b(reveal|show|print|output)\b/.test(fp) && stems.includes('sysprompt')) stems.push('exfil');
+  // Require jailbreak-shaped pair — not lint/debug "ignore previous rule"
+  if (stems.includes('override') && (stems.includes('sysprompt') || stems.includes('safety'))) {
+    return stems.sort().join(' ');
+  }
+  return ''; // no BoN fingerprint → never clusters
 }
 
 export interface BonHit {
@@ -109,7 +119,7 @@ export interface BonHit {
  * Session Best-of-N watch: near-duplicate paraphrase bursts → escalate.
  */
 export class BonParaphraseWatch {
-  private bySession = new Map<string, string[]>(); // fingerprints
+  private bySession = new Map<string, string[]>();
   private readonly threshold: number;
 
   constructor(threshold = 3) {
@@ -118,17 +128,17 @@ export class BonParaphraseWatch {
 
   record(sessionId: string, text: string): BonHit {
     const fp = bonFingerprint(text);
-    if (fp.split(' ').length < 3) {
-      return { triggered: false, clusterSize: 0, fingerprint: fp };
+    if (!fp) {
+      return { triggered: false, clusterSize: 0, fingerprint: '' };
     }
     const list = this.bySession.get(sessionId) ?? [];
     list.push(fp);
     this.bySession.set(sessionId, list.slice(-20));
 
-    // Count near-duplicates: exact fp match or Jaccard >= 0.7 on token sets
     let cluster = 0;
     const tokens = new Set(fp.split(' '));
     for (const other of list) {
+      if (!other) continue;
       if (other === fp || jaccard(tokens, new Set(other.split(' '))) >= 0.7) {
         cluster += 1;
       }
