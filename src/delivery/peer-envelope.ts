@@ -2,8 +2,12 @@
  * DL-007 — Inter-agent envelopes (data ↛ instruction).
  * Peer `data` is always untrusted (scanContext source=other_agent + Spotlight).
  * It cannot promote to instruction/system or expand the user-origin ActionGuard plan.
+ *
+ * HTML comments are stripped from delivery; comment bodies are scanned for flags
+ * only and never concatenated into dataText.
  */
 import { scanContext, type ContextScanResult } from '../scanner/context.js';
+import { scrubUntrustedIngress } from '../scanner/boundary-scrub.js';
 import { wrapMessage } from './wrap.js';
 import {
   actionGuard,
@@ -26,6 +30,7 @@ export interface PeerIngestOptions {
   /**
    * Dangerous escape hatch: allow a peer `instruction` field.
    * Default false — data never promotes to instruction.
+   * When true, instruction still runs scrubUntrustedIngress + scanContext.
    */
   allowPeerInstruction?: boolean;
   policy?: 'block' | 'strip' | 'quarantine';
@@ -68,7 +73,8 @@ function dataToText(data: PeerEnvelope['data']): string {
 /**
  * Ingest a peer agent envelope.
  * - `data` always runs untrusted other_agent pipeline (boundary scrub + scan + Spotlight).
- * - `instruction` is dropped by default (cannot promote data→instruction).
+ * - HTML comment bodies are scanned for flags only — never delivered in dataText.
+ * - `instruction` is dropped by default; when allowed, still scrubbed + scanned.
  * - Optional ActionGuard against the originating user's trustedPlan.
  */
 export async function ingestPeerEnvelope(
@@ -76,40 +82,114 @@ export async function ingestPeerEnvelope(
   opts: PeerIngestOptions = {},
 ): Promise<PeerIngestResult> {
   const flags: string[] = ['peer_envelope', 'source:other_agent'];
+  const policy = opts.policy ?? 'quarantine';
 
   let instruction: string | null = null;
   if (opts.allowPeerInstruction && typeof envelope.instruction === 'string' && envelope.instruction.trim()) {
-    instruction = envelope.instruction;
+    const scrubbed = scrubUntrustedIngress(envelope.instruction).text;
+    const instrScan = await scanContext(scrubbed, {
+      source: 'other_agent',
+      policy,
+    });
+    instruction = instrScan.text;
     flags.push('peer_instruction_allowed');
+    if (instrScan.action !== 'allow') flags.push(`peer_instruction_contained:${instrScan.action}`);
   } else if (envelope.instruction != null && String(envelope.instruction).trim()) {
     flags.push('peer_instruction_dropped');
   }
 
   const raw = dataToText(envelope.data);
   const { text: visible, comments } = stripHtmlComments(raw);
+
+  let hiddenDirective = false;
   for (const c of comments) {
     flags.push('html_comment_stripped');
-    if (HIDDEN_DIRECTIVE.test(c)) flags.push('hidden_peer_directive');
+    if (HIDDEN_DIRECTIVE.test(c)) {
+      flags.push('hidden_peer_directive');
+      hiddenDirective = true;
+    }
   }
   if (HIDDEN_DIRECTIVE.test(visible)) flags.push('directive_language_in_data');
 
-  // Scan visible + comment bodies so hidden HTML directives still trip the scanner.
-  const scanInput = [visible, ...comments].filter(Boolean).join('\n');
-  const scan = await scanContext(scanInput, {
+  // Deliver visible text only — never concatenate / substitute comment bodies.
+  const visibleScan = await scanContext(visible, {
     source: 'other_agent',
-    policy: opts.policy ?? 'quarantine',
+    policy,
   });
 
-  // Prefer scanContext output (already boundary-scrubbed); Spotlight-wrap when allowed
-  // so role stays untrusted:other_agent even if classification is safe.
-  let dataText = scan.text;
-  if (scan.action === 'allow') {
-    dataText = wrapMessage(scan.text, scan.scan, {
+  let commentFlagged = false;
+  let maxCommentScore = 0;
+  for (const c of comments) {
+    if (!c.trim()) continue;
+    const commentScan = await scanContext(c, {
+      source: 'other_agent',
+      policy,
+    });
+    if (commentScan.flagged || !commentScan.scan.safe) {
+      commentFlagged = true;
+      flags.push('comment_scan_flagged');
+    }
+    maxCommentScore = Math.max(maxCommentScore, commentScan.scan.score);
+  }
+
+  // Escalate scan metadata from comments without changing delivery text.
+  const scan: ContextScanResult = {
+    ...visibleScan,
+    flagged: visibleScan.flagged || commentFlagged || hiddenDirective,
+    scan: {
+      ...visibleScan.scan,
+      score: Math.max(visibleScan.scan.score, maxCommentScore),
+      safe: visibleScan.scan.safe && !commentFlagged && !hiddenDirective,
+      flags: [
+        ...visibleScan.scan.flags,
+        ...(hiddenDirective ? ['hidden_peer_directive'] : []),
+        ...(commentFlagged ? ['comment_scan_flagged'] : []),
+      ],
+    },
+  };
+
+  const forceContain = hiddenDirective || commentFlagged;
+  let dataText: string;
+
+  if (forceContain) {
+    flags.push(
+      hiddenDirective
+        ? 'forced_contain:hidden_peer_directive'
+        : 'forced_contain:comment_scan_flagged',
+    );
+    // Always Spotlight-wrap visible-only text — never comment bodies.
+    dataText = wrapMessage(visibleScan.text, scan.scan, {
+      role: 'untrusted:other_agent',
+    }).formatted;
+    flags.push('contained:quarantine');
+  } else if (visibleScan.action === 'allow') {
+    dataText = wrapMessage(visibleScan.text, visibleScan.scan, {
       role: 'untrusted:other_agent',
     }).formatted;
     flags.push('spotlight_wrap');
   } else {
-    flags.push(`contained:${scan.action}`);
+    // strip/quarantine/block from visible path only
+    dataText = visibleScan.text;
+    flags.push(`contained:${visibleScan.action}`);
+  }
+
+  // Hard guarantee: no HTML comment delimiters or comment-only payloads in delivery.
+  dataText = dataText.replace(/<!--[\s\S]*?-->/g, ' ');
+  for (const c of comments) {
+    const trimmed = c.trim();
+    if (!trimmed) continue;
+    // Remove distinctive comment substrings that are not in visible text
+    if (!visible.includes(trimmed) && dataText.includes(trimmed)) {
+      dataText = dataText.split(trimmed).join('');
+      flags.push('comment_leak_stripped');
+    }
+    // Also scrub shorter unique needles (emails etc.) from comments not in visible
+    for (const token of trimmed.split(/\s+/)) {
+      if (token.length >= 8 && token.includes('@') && !visible.includes(token) && dataText.includes(token)) {
+        dataText = dataText.split(token).join('');
+        flags.push('comment_leak_stripped');
+      }
+    }
   }
 
   let guard: ActionGuardResult | undefined;
