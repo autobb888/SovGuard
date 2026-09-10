@@ -4,7 +4,7 @@
  */
 
 import type { Classification, LayerResult, SovGuardConfig, ScanResult } from '../types.js';
-import { normalizeConfusables, normalizeStrip, regexSeverityWeight } from './regex.js';
+import { normalizeConfusables, normalizeStrip, normalizeToFixedPoint, regexSeverityWeight } from './regex.js';
 import { CODE_CATEGORIES, CODE_CONTENT_LABELS } from './code-categories.js';
 import { classifierScan } from './classifier.js';
 import { semanticScan } from './semantic.js';
@@ -34,6 +34,11 @@ export function detectDegradation(layers: LayerResult[]): { degraded: boolean; d
  * ("I have 3 cats" → "e cats"). The regex layer handles leetspeak separately.
  */
 export function classifierInput(text: string): string {
+  // DL-002: prefer fixed-point text when stego/bidi/tags/escapes were present
+  const fp = normalizeToFixedPoint(text);
+  if (fp.signals.length > 0 && fp.text !== text) {
+    return fp.text;
+  }
   const normalized = normalizeConfusables(normalizeStrip(text));
   const stripWs = (s: string) => s.replace(/\s+/g, '');
   return stripWs(normalized) !== stripWs(text) ? normalized : text;

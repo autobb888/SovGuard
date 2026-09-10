@@ -432,7 +432,9 @@ export function regexScan(text: string, extraPatterns?: PatternDef[]): LayerResu
   const spaced = normalizeSpace(text);
   const confusables = normalizeConfusables(text);
   const composed = normalizeForDetection(text);
-  const variants = new Set([stripped, spaced, confusables, composed]);
+  // DL-002: fixed-point normalization catches nested escapes / Tags / bidi
+  const fixedPoint = normalizeToFixedPoint(text);
+  const variants = new Set([stripped, spaced, confusables, composed, fixedPoint.text]);
   variants.delete(text); // don't re-scan original
   const normalizedMatches: PatternMatch[] = [];
   for (const variant of variants) {
@@ -522,6 +524,37 @@ export function regexScan(text: string, extraPatterns?: PatternDef[]): LayerResu
         category: 'encoding_trick',
         severity: 'high',
         matched: `[unicode_tags] ${tagPayload.slice(0, 80)}`,
+      });
+    }
+  }
+
+  // DL-002: multi-iter / bidi / tag signals → medium+ severity bump (not bare NFKC)
+  if (shouldEscalateUnicodeSignals(fixedPoint)) {
+    if (fixedPoint.stegoReassembly && !seenLabels.has('stego_reassembly')) {
+      seenLabels.add('stego_reassembly');
+      mergedMatches.push({
+        pattern: 'stego_reassembly',
+        category: 'encoding_trick',
+        severity: 'medium',
+        matched: `[fixed_point iters=${fixedPoint.iters}] ${fixedPoint.text.slice(0, 80)}`,
+      });
+    }
+    if (fixedPoint.signals.includes('bidi') && !seenLabels.has('bidi_override')) {
+      seenLabels.add('bidi_override');
+      mergedMatches.push({
+        pattern: 'bidi_override',
+        category: 'encoding_trick',
+        severity: 'medium',
+        matched: '[bidi] overrides stripped before detection',
+      });
+    }
+    if (fixedPoint.signals.includes('unicode_tag') && !seenLabels.has('unicode_tag:fixed_point')) {
+      seenLabels.add('unicode_tag:fixed_point');
+      mergedMatches.push({
+        pattern: 'unicode_tag:fixed_point',
+        category: 'encoding_trick',
+        severity: 'high',
+        matched: `[unicode_tags fixed_point] ${fixedPoint.text.slice(0, 80)}`,
       });
     }
   }
@@ -1045,3 +1078,100 @@ function scanAcrostic(text: string, patterns: PatternDef[]): PatternMatch[] {
 }
 
 export { PATTERNS, type PatternDef };
+
+// ── DL-002: normalize to fixed point ─────────────────────────
+
+export interface FixedPointNorm {
+  text: string;
+  iters: number;
+  stegoReassembly: boolean;
+  signals: string[];
+}
+
+/** Bidi overrides + isolates: LRE/RLE/PDF/LRO/RLO/LRI/RLI/FSI/PDI */
+const BIDI_RE_FP = /[\u202A-\u202E\u2066-\u2069]/g;
+
+export function stripBidiOverrides(text: string): string {
+  return text.replace(BIDI_RE_FP, '');
+}
+
+export function decodeCodePointEscapes(text: string): string {
+  let out = text.replace(/\\u\{([0-9a-fA-F]+)\}/gi, (_m, h: string) => {
+    const cp = parseInt(h, 16);
+    try {
+      return String.fromCodePoint(cp);
+    } catch {
+      return _m;
+    }
+  });
+  out = decodeUnicodeEscapes(out);
+  return out;
+}
+
+export function materializeUnicodeTags(text: string): string {
+  return text.replace(/[\u{E0020}-\u{E007E}]/gu, (c) =>
+    String.fromCharCode((c.codePointAt(0) ?? 0) - 0xE0000),
+  );
+}
+
+/**
+ * DL-002: iteratively decode + strip + fold until stable (maxIters).
+ * Escalate only on tags/bidi/escape/stego — not bare NFKC.
+ */
+export function normalizeToFixedPoint(text: string, maxIters = 4): FixedPointNorm {
+  let cur = text;
+  const signals = new Set<string>();
+  let transforms = 0;
+
+  for (let i = 0; i < maxIters; i++) {
+    let next = cur;
+
+    BIDI_RE_FP.lastIndex = 0;
+    if (BIDI_RE_FP.test(next)) signals.add('bidi');
+    if (/[\u200B-\u200D\u2060\uFEFF\u00AD]/.test(next)) signals.add('zw');
+
+    const beforeEsc = next;
+    next = decodeCodePointEscapes(next);
+    if (next !== beforeEsc) signals.add('unicode_escape');
+
+    if (/[\u{E0020}-\u{E007E}]/u.test(next)) {
+      signals.add('unicode_tag');
+      next = materializeUnicodeTags(next);
+    } else {
+      const extracted = decodeUnicodeTags(next);
+      if (extracted.length >= 3) {
+        signals.add('unicode_tag');
+        next = materializeUnicodeTags(next);
+      }
+    }
+
+    const vs = decodeVariationSelectors(next);
+    if (vs.length >= 3) {
+      signals.add('variation_selector');
+      next = `${next.replace(/[\uFE00-\uFE0F]/g, '')}${vs}`;
+    }
+
+    next = stripBidiOverrides(next);
+    next = normalizeStrip(next);
+    next = normalizeConfusables(next);
+
+    if (next === cur) break;
+    transforms += 1;
+    cur = next;
+  }
+
+  return {
+    text: cur,
+    iters: transforms,
+    stegoReassembly: transforms >= 2,
+    signals: [...signals],
+  };
+}
+
+export function shouldEscalateUnicodeSignals(fp: FixedPointNorm): boolean {
+  if (fp.stegoReassembly) return true;
+  return fp.signals.some((s) =>
+    s === 'unicode_tag' || s === 'bidi' || s === 'variation_selector' || s === 'unicode_escape',
+  );
+}
+
