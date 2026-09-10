@@ -1,32 +1,13 @@
 /**
  * Outbound image-exfiltration scanner.
- * Auto-loading remote images in an agent RESPONSE are a zero-click data
- * exfiltration channel (EchoLeak-class): the rendering client GETs the URL,
- * leaking whatever the attacker encoded into the path/query. Mirrors the inbound
- * markdown_image_exfil / html_img_exfil patterns (src/scanner/regex.ts) but runs
- * on OUTPUT, where they were previously never applied.
- *
  * DL-004: when allowedUrls is provided, remote image URLs not on the trusted-plan
- * allowlist are blocked (not just warned).
+ * allowlist are blocked (shared safe matcher with ActionGuard).
  */
 import type { OutputFlag } from '../types.js';
+import { urlOnTrustedAllowlist } from '../delivery/action-guard.js';
 
 const MARKDOWN_IMAGE_REMOTE = /!\[.*?\]\(\s*(https?:\/\/[^)]*)\s*\)/i;
 const HTML_IMG_REMOTE = /<img\s[^>]{0,500}\bsrc\s*=\s*["']?\s*(https?:\/\/[^"'\s>)]+)/i;
-
-function onAllowlist(url: string, allowedUrls: string[]): boolean {
-  for (const entry of allowedUrls) {
-    const e = entry.trim();
-    if (!e) continue;
-    if (url === e || url.startsWith(e)) return true;
-    try {
-      const u = new URL(url);
-      const a = new URL(e.includes('://') ? e : `https://${e}`);
-      if (u.origin === a.origin && (url.startsWith(e) || url.startsWith(a.href))) return true;
-    } catch { /* ignore */ }
-  }
-  return false;
-}
 
 export function scanExfil(
   message: string,
@@ -38,7 +19,7 @@ export function scanExfil(
   const md = MARKDOWN_IMAGE_REMOTE.exec(message);
   if (md) {
     const url = md[1];
-    const allowlisted = allowed ? onAllowlist(url, allowed) : false;
+    const allowlisted = allowed ? urlOnTrustedAllowlist(url, allowed) : false;
     if (allowed && !allowlisted) {
       flags.push({
         type: 'agent_exfiltration',
@@ -60,7 +41,7 @@ export function scanExfil(
   const img = HTML_IMG_REMOTE.exec(message);
   if (img) {
     const url = img[1];
-    const allowlisted = allowed ? onAllowlist(url, allowed) : false;
+    const allowlisted = allowed ? urlOnTrustedAllowlist(url, allowed) : false;
     if (allowed && !allowlisted) {
       flags.push({
         type: 'agent_exfiltration',

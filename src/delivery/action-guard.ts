@@ -56,23 +56,57 @@ export function isUntrustedActionSource(source: string | undefined): boolean {
   return !!source && UNTRUSTED_SOURCES.has(source);
 }
 
-function urlAllowed(url: string, allowlist: string[]): boolean {
-  const normalized = url.trim();
+/** Resolve . / .. in a pathname without touching the host. */
+export function normalizeUrlPathname(pathname: string): string {
+  const parts = pathname.split('/');
+  const out: string[] = [];
+  for (const p of parts) {
+    if (p === '' || p === '.') continue;
+    if (p === '..') {
+      out.pop();
+      continue;
+    }
+    out.push(p);
+  }
+  return '/' + out.join('/');
+}
+
+/**
+ * Safe allowlist match: parse with URL; hostname/port/protocol must match exactly
+ * (no bare string startsWith on the full href for host trust). Path checks only
+ * after normalizing `.` / `..` within the same origin.
+ */
+export function urlOnTrustedAllowlist(candidate: string, allowlist: string[]): boolean {
+  let cand: URL;
+  try {
+    cand = new URL(candidate.trim());
+  } catch {
+    return false;
+  }
+  if (cand.protocol !== 'http:' && cand.protocol !== 'https:') return false;
+  const candPath = normalizeUrlPathname(cand.pathname);
+
   for (const entry of allowlist) {
     const e = entry.trim();
     if (!e) continue;
-    if (normalized === e || normalized.startsWith(e)) return true;
+    let allowed: URL;
     try {
-      const u = new URL(normalized);
-      const a = new URL(e.includes('://') ? e : `https://${e}`);
-      if (u.origin === a.origin && (e.endsWith('/') ? u.href.startsWith(a.href) : u.href.startsWith(e) || u.origin === a.origin && e === a.origin)) {
-        return true;
-      }
-      // prefix match on href
-      if (u.href.startsWith(e) || u.href.startsWith(a.href)) return true;
+      allowed = new URL(e.includes('://') ? e : `https://${e}`);
     } catch {
-      /* ignore */
+      continue;
     }
+    if (allowed.protocol !== 'http:' && allowed.protocol !== 'https:') continue;
+    // Exact host trust — blocks good.example.evil.test when allowlist is good.example
+    if (cand.protocol !== allowed.protocol) continue;
+    if (cand.hostname !== allowed.hostname) continue;
+    if (cand.port !== allowed.port) continue;
+
+    const allowedPath = normalizeUrlPathname(allowed.pathname);
+    // Origin-only allowlist entry (path /) → any path on that origin
+    if (allowedPath === '/') return true;
+    if (candPath === allowedPath) return true;
+    const prefix = allowedPath.endsWith('/') ? allowedPath : `${allowedPath}/`;
+    if (candPath.startsWith(prefix)) return true;
   }
   return false;
 }
@@ -115,7 +149,7 @@ export function actionGuard(
       continue;
     }
     if (action.type === 'fetch') {
-      if (urlAllowed(action.url, allowedUrls)) {
+      if (urlOnTrustedAllowlist(action.url, allowedUrls)) {
         allowed.push(action);
       } else {
         denied.push({
@@ -149,6 +183,7 @@ export function extractRemoteUrls(text: string): string[] {
 /**
  * Flag model output that echoes remote image/URLs introduced only by untrusted
  * context and not present on the trusted plan URL allowlist.
+ * Never throws on invalid introduced URL strings.
  */
 export function flagUntrustedUrlEcho(
   output: string,
@@ -157,12 +192,32 @@ export function flagUntrustedUrlEcho(
 ): Array<{ url: string; reason: string }> {
   const echoed = extractRemoteUrls(output);
   const allow = trustedPlan.urls ?? [];
-  const introduced = untrustedIntroducedUrls.map((u) => u.trim());
   const hits: Array<{ url: string; reason: string }> = [];
+
+  const introducedHosts: string[] = [];
+  const introducedHrefs: string[] = [];
+  for (const raw of untrustedIntroducedUrls) {
+    try {
+      const u = new URL(raw.trim());
+      introducedHosts.push(u.hostname);
+      introducedHrefs.push(u.href);
+    } catch {
+      // skip invalid — never throw
+    }
+  }
+
   for (const url of echoed) {
-    const fromUntrusted = introduced.some((u) => url.startsWith(u) || u.startsWith(url) || url.includes(new URL(u).host));
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      continue;
+    }
+    const fromUntrusted =
+      introducedHosts.includes(parsed.hostname) ||
+      introducedHrefs.some((h) => parsed.href.startsWith(h) || h.startsWith(parsed.origin));
     if (!fromUntrusted) continue;
-    if (!urlAllowed(url, allow)) {
+    if (!urlOnTrustedAllowlist(url, allow)) {
       hits.push({
         url,
         reason: 'untrusted-introduced URL echoed without trusted-plan allowlist entry',

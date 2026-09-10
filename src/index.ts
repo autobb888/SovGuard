@@ -208,3 +208,4 @@ export { detectPolicyRewrite, detectPolicyAck, detectCrescendoProbe } from './sc
 
 export { actionGuard, flagUntrustedUrlEcho, extractRemoteUrls, isUntrustedActionSource } from './delivery/action-guard.js';
 export type { TrustedPlan, ProposedAction, ActionGuardResult, DeniedAction } from './delivery/action-guard.js';
+export { urlOnTrustedAllowlist, normalizeUrlPathname } from './delivery/action-guard.js';
