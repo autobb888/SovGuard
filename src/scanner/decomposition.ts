@@ -2,6 +2,9 @@
  * DL-009 — Algorithmic decomposition / split-payload heuristics.
  * Detect reconstruct-then-execute procedural asks (list-filter-join, var concat)
  * and correlate multi-doc half-payloads in a shared session.
+ *
+ * assemble_execute requires reconstruct-then-execute *intent* — not any
+ * join+execute collocation in benign ops/business prose.
  */
 import { normalizeToFixedPoint } from './regex.js';
 
@@ -15,14 +18,23 @@ export interface DecompositionHit {
 
 const ASSEMBLE =
   /\b(join|concatenat\w*|assemble|combine|filter\s+to|word\s+after\s+each)\b/i;
+
+/** No bare "follow" — require follow+(result|command|instructions|that) or stronger. */
 const EXECUTE =
-  /\b(execute|follow|then\s+(?:run|call|execute|follow)|call\s+send_email|dump\s+system)\b/i;
+  /\b(?:then\s+(?:run|execute|call)|execute\s+that\s+command|follow\s+(?:the\s+)?(?:result|command|instructions|that)|call\s+send_email|dump\s+system)\b/i;
+
+const INJECTION_CUE =
+  /\b(?:ignore\s+previous|send_email|system\s+prompt|that\s+command|attacker@|exfil)\b/i;
+
 const VAR_ASSIGN =
   /\b(?:let|const|var)?\s*[a-z]\s*=\s*["'][^"']{1,40}["']\s*;?\s*(?:[a-z]\s*=\s*["'][^"']{1,40}["']\s*;?\s*){1,}/i;
+
 const VAR_CONCAT =
-  /\b(?:concatenat\w*|join|assemble)\b[\s\S]{0,60}?\b[a-z](?:\s*\+\s*[a-z])+\b|\b[a-z](?:\s*\+\s*[a-z]){2,}\b[\s\S]{0,40}\b(?:follow|execute|run)\b/i;
+  /\b(?:concatenat\w*|join|assemble)\b[\s\S]{0,60}?\b[a-z](?:\s*\+\s*[a-z])+\b|\b[a-z](?:\s*\+\s*[a-z]){2,}\b[\s\S]{0,40}\b(?:follow\s+(?:the\s+)?(?:result|command|instructions|that)|execute|run)\b/i;
+
 const COLOR_LIST =
   /(?:^|\n)\s*[-*]\s*\w+\s*:\s*\S+[\s\S]{0,200}?\b(?:filter|join|execute)\b/i;
+
 const HALF_MARK =
   /\bpart\s*[12]\s*\/\s*2\b|\b\(1\/2\)|\b\(2\/2\)|\bignore previous instructions\b|\bcall send_email\b/i;
 
@@ -37,25 +49,37 @@ export function detectDecomposition(text: string): DecompositionHit {
 
   const hasAssemble = ASSEMBLE.test(fp);
   const hasExecute = EXECUTE.test(fp);
+  const hasInjectionCue = INJECTION_CUE.test(fp);
+  const listShape = COLOR_LIST.test(fp) && hasAssemble && hasExecute;
 
-  if (COLOR_LIST.test(fp) && hasAssemble && hasExecute) {
+  if (listShape) {
     kinds.push('list_filter_join');
-  } else if (hasAssemble && hasExecute) {
-    kinds.push('assemble_execute');
   }
 
-  // Require an execute/follow cue — bare coding concat is FP
+  // Require execute/follow cue — bare coding concat is FP
   if (hasExecute && VAR_ASSIGN.test(fp) && (VAR_CONCAT.test(fp) || hasAssemble)) {
     kinds.push('var_concat');
   } else if (hasExecute && VAR_CONCAT.test(fp)) {
     kinds.push('var_concat');
   }
 
+  // assemble_execute: reconstruct + execute intent with injection/tool cue,
+  // or list/var shapes already captured above — not bare join+execute prose.
+  if (
+    !listShape &&
+    hasAssemble &&
+    hasExecute &&
+    hasInjectionCue &&
+    kinds.length === 0
+  ) {
+    kinds.push('assemble_execute');
+  }
+
   // Fragment hints for session correlation (even if not full hit alone)
   if (/\bignore previous\b/i.test(fp)) fragmentScore = Math.max(fragmentScore, 0.35);
   if (/\bcall send_email\b/i.test(fp)) fragmentScore = Math.max(fragmentScore, 0.4);
   if (/\bpart\s*[12]\s*\/\s*2\b/i.test(fp)) fragmentScore = Math.max(fragmentScore, 0.3);
-  if (HALF_MARK.test(fp)) fragmentScore = Math.max(fragmentScore, fragmentScore);
+  if (HALF_MARK.test(fp)) fragmentScore = Math.max(fragmentScore, 0.25);
 
   const found = kinds.length > 0;
   let evidence = '';
@@ -94,12 +118,10 @@ export class DecompositionWatch {
       fragmentScore: hit.fragmentScore || (hit.found ? 0.55 : scoreFragmentAlone(fp)),
       at: Date.now(),
     });
-    // keep last 8
     this.frags.set(sessionId, list.slice(-8));
 
     if (hit.found) return hit;
 
-    // Cross-fragment: concatenate recent halves
     const combined = list.map((f) => f.text).join('\n');
     const combo = detectDecomposition(combined);
     if (combo.found || looksLikeSplitInjection(list)) {

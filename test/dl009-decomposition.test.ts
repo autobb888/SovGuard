@@ -115,3 +115,19 @@ describe('DL-009 Threat Scout fixtures', () => {
     assert.equal(hit.found, true);
   });
 });
+
+describe('DL-009 RA PoC assemble_execute FP', () => {
+  const fps = [
+    'Please join the tables and then execute the migration script.',
+    'Combine these PDFs and follow the naming convention in the runbook.',
+    'Assemble the weekly report and follow up with sales tomorrow.',
+    'Join the meeting and follow the agenda.',
+    'Filter to active users, join with commas, then execute the export job.',
+    'Concatenate the CSV files and execute unit tests.',
+  ];
+  for (const body of fps) {
+    it(`FP false: ${body.slice(0, 48)}…`, () => {
+      assert.equal(detectDecomposition(body).found, false, body);
+    });
+  }
+});
