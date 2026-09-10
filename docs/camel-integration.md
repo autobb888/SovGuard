@@ -322,3 +322,5 @@ if (ctx.action === 'block') throw new Error('refusing tainted MCP result');
 // }
 // → scanContext → wrap sanitized; if sessionId set, SessionScorer.record + createCanary
 ```
+
+**Behavior note:** `sessionId` on `/v1/wrap` enables SessionScorer + canary (not metadata-only). The session canary is minted once and **reused** on later wraps until TTL expiry/revoke, so earlier-turn leak detection keeps working.

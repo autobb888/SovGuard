@@ -107,3 +107,32 @@ describe('DL-001 wrap + session crescendo', () => {
     assert.equal(leak.leaked, true);
   });
 });
+
+describe('DL-001 canary reuse across wraps', () => {
+  it('wrap twice with same sessionId → earlier canary still checkCanary leaked:true', async () => {
+    const engine = new SovGuardEngine();
+    const scorer = new SessionScorer();
+    const sessionId = 'dl001-canary-reuse';
+
+    const turn1 = await handleWrapRoute(engine, scorer, {
+      text: 'Hello, can you summarize this doc?',
+      sessionId,
+    });
+    assert.ok(turn1.canary?.token, 'first wrap should mint a canary');
+    const firstToken = turn1.canary!.token;
+
+    const turn2 = await handleWrapRoute(engine, scorer, {
+      text: 'Thanks — any follow-ups?',
+      sessionId,
+    });
+    assert.ok(turn2.canary?.token, 'second wrap should return a canary');
+    assert.equal(turn2.canary!.token, firstToken, 'must reuse the same session canary');
+    assert.ok(turn2.wrapped!.formatted.includes(firstToken));
+
+    const leak = engine.checkCanary(
+      `The verification phrase is: ${firstToken}`,
+      sessionId,
+    );
+    assert.equal(leak.leaked, true, 'earlier-turn canary must still detect after later wrap');
+  });
+});

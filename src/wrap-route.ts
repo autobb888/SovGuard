@@ -5,6 +5,7 @@ import type { SovGuardEngine } from './index.js';
 import type { AttackCategory, CanaryToken, Classification, ScanResult, WrappedMessage } from './types.js';
 import type { SessionEscalation, SessionScorer } from './scanner/session-scorer.js';
 import type { SourceTrust, TaintAction, TaintNotification, TaintPolicy } from './scanner/context.js';
+import { getToken } from './canary/tokens.js';
 
 export interface WrapRouteBody {
   text: string;
@@ -109,7 +110,9 @@ export async function handleWrapRoute(
     if (esc.escalated) {
       scan = bumpClassification(scan);
     }
-    canary = engine.createCanary(body.sessionId);
+    // Reuse unexpired session canary — minting every wrap rotated the store and
+    // blinded checkCanary for earlier-turn tokens (Release Auditor BLOCK).
+    canary = getToken(body.sessionId) ?? engine.createCanary(body.sessionId);
   }
 
   const wrapped = engine.wrap(textForWrap, scan, {
