@@ -131,3 +131,14 @@ describe('DL-009 RA PoC assemble_execute FP', () => {
     });
   }
 });
+
+describe("DL-009 RA PoC that-command gate", () => {
+  it("assemble + execute that command without injection cue => false", () => {
+    assert.equal(
+      detectDecomposition(
+        "Please assemble the steps and then execute that command in staging.",
+      ).found,
+      false,
+    );
+  });
+});

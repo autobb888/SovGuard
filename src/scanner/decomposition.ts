@@ -24,7 +24,7 @@ const EXECUTE =
   /\b(?:then\s+(?:run|execute|call)|execute\s+that\s+command|follow\s+(?:the\s+)?(?:result|command|instructions|that)|call\s+send_email|dump\s+system)\b/i;
 
 const INJECTION_CUE =
-  /\b(?:ignore\s+previous|send_email|system\s+prompt|that\s+command|attacker@|exfil)\b/i;
+  /\b(?:ignore\s+previous|send_email|system\s+prompt|attacker@|exfil)\b/i;
 
 const VAR_ASSIGN =
   /\b(?:let|const|var)?\s*[a-z]\s*=\s*["'][^"']{1,40}["']\s*;?\s*(?:[a-z]\s*=\s*["'][^"']{1,40}["']\s*;?\s*){1,}/i;
