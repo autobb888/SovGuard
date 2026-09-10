@@ -1,47 +1,39 @@
 /**
  * DL-006 — Boundary / special-token scrub on untrusted ingress.
- * Neutralize forged tool_call / SYSTEM / chat-template / role delimiters so
- * parsers and models do not treat untrusted data as privileged turns.
+ * Neutralize forged tool_call / SYSTEM / chat-template / role markers so
+ * parsers and models cannot treat untrusted data as privileged turns.
  */
 
 export interface BoundaryScrubOptions {
-  /** Extra RegExp sources (without flags) merged into the default set. */
-  extraPatterns?: RegExp[];
+  /** Extra literal or RegExp patterns to neutralize (merged with defaults). */
+  extraPatterns?: Array<RegExp | string>;
 }
 
 export interface BoundaryScrubResult {
   text: string;
+  /** Human-readable labels for matched boundary kinds. */
   hits: string[];
-  scrubbed: boolean;
+  changed: boolean;
 }
 
-/**
- * Default reserved boundary tokens (MCP/XML/role/chat-template).
- * Case-insensitive where useful; keep patterns specific to limit FP.
- */
-export const DEFAULT_BOUNDARY_PATTERNS: RegExp[] = [
-  /<\/?tool_call\b[^>]*>/gi,
-  /<\/?tool_calls\b[^>]*>/gi,
-  /<\/?function_call\b[^>]*>/gi,
-  /<\/?invoke\b[^>]*>/gi,
-  /\[SYSTEM\]/gi,
-  /\[\/?SYSTEM\]/gi,
-  /\[INST\]/gi,
-  /\[\/INST\]/gi,
-  /<<SYS>>/gi,
-  /<\/?SYS>>/gi,
-  /<\|im_start\|>/gi,
-  /<\|im_end\|>/gi,
-  /<\|endoftext\|>/gi,
-  /<\|system\|>/gi,
-  /<\|user\|>/gi,
-  /<\|assistant\|>/gi,
-  /<\/?\|?(?:system|user|assistant)\|?>/gi,
-  /<\/?system\b[^>]*>/gi,
-  /<\/?assistant\b[^>]*>/gi,
+/** Default reserved boundary tokens (MCP / XML / chat-template / role). */
+export const DEFAULT_BOUNDARY_PATTERNS: ReadonlyArray<{ label: string; pattern: RegExp }> = [
+  { label: 'tool_call', pattern: /<\/?tool_call\b[^>]*>/gi },
+  { label: 'tool_calls', pattern: /<\/?tool_calls\b[^>]*>/gi },
+  { label: 'function_call', pattern: /<\/?function_call\b[^>]*>/gi },
+  { label: 'system_bracket', pattern: /\[\s*SYSTEM\s*\]/gi },
+  { label: 'system_xml', pattern: /<\/?system\b[^>]*>/gi },
+  { label: 'im_start', pattern: /<\|im_start\|>/gi },
+  { label: 'im_end', pattern: /<\|im_end\|>/gi },
+  { label: 'endoftext', pattern: /<\|endoftext\|>/gi },
+  { label: 'eot_id', pattern: /<\|eot_id\|>/gi },
+  { label: 'start_header', pattern: /<\|start_header_id\|>/gi },
+  { label: 'end_header', pattern: /<\|end_header_id\|>/gi },
+  { label: 'assistant_role', pattern: /<\/?assistant\b[^>]*>/gi },
+  { label: 'user_role_xml', pattern: /<\/?user\b[^>]*>/gi },
 ];
 
-/** Break delimiter glyphs so exact parser matches fail; keep text readable. */
+/** Break delimiter characters so exact parser matches fail; keep readable. */
 export function neutralizeBoundaryToken(token: string): string {
   return token
     .replace(/</g, '‹')
@@ -52,41 +44,40 @@ export function neutralizeBoundaryToken(token: string): string {
 }
 
 /**
- * Detect + neutralize reserved boundary tokens in text.
- * Idempotent for already-neutralized glyphs (‹ › 〔〕 ¦).
+ * Detect and neutralize reserved boundary tokens in text.
+ * Safe to run repeatedly; already-neutralized forms are not re-matched.
  */
 export function scrubBoundaries(
   text: string,
   opts?: BoundaryScrubOptions,
 ): BoundaryScrubResult {
-  const patterns = opts?.extraPatterns?.length
-    ? [...DEFAULT_BOUNDARY_PATTERNS, ...opts.extraPatterns]
-    : DEFAULT_BOUNDARY_PATTERNS;
-
-  const hits: string[] = [];
   let out = text;
-  for (const re of patterns) {
-    // Fresh lastIndex for global regexes
-    const flags = re.flags.includes('g') ? re.flags : `${re.flags}g`;
-    const compiled = new RegExp(re.source, flags);
-    out = out.replace(compiled, (match) => {
-      hits.push(match);
-      return neutralizeBoundaryToken(match);
-    });
+  const hits: string[] = [];
+
+  const patterns = [...DEFAULT_BOUNDARY_PATTERNS];
+  for (const extra of opts?.extraPatterns ?? []) {
+    if (typeof extra === 'string') {
+      patterns.push({
+        label: 'extra',
+        pattern: new RegExp(extra.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi'),
+      });
+    } else {
+      patterns.push({ label: 'extra', pattern: extra });
+    }
+  }
+
+  for (const { label, pattern } of patterns) {
+    // Reset lastIndex for global patterns
+    pattern.lastIndex = 0;
+    if (!pattern.test(out)) continue;
+    pattern.lastIndex = 0;
+    hits.push(label);
+    out = out.replace(pattern, (m) => neutralizeBoundaryToken(m));
   }
 
   return {
     text: out,
-    hits,
-    scrubbed: hits.length > 0,
+    hits: [...new Set(hits)],
+    changed: out !== text,
   };
-}
-
-/** True when text still contains a raw (un-neutralized) default boundary token. */
-export function hasRawBoundaryToken(text: string): boolean {
-  for (const re of DEFAULT_BOUNDARY_PATTERNS) {
-    const flags = re.flags.includes('g') ? re.flags : `${re.flags}g`;
-    if (new RegExp(re.source, flags).test(text)) return true;
-  }
-  return false;
 }

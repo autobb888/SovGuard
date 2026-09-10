@@ -229,5 +229,5 @@ export type {
   ShadowingResult,
 } from './scanner/tool-schema.js';
 
-export { scrubBoundaries, neutralizeBoundaryToken, hasRawBoundaryToken, DEFAULT_BOUNDARY_PATTERNS } from './scanner/boundary-scrub.js';
+export { scrubBoundaries, neutralizeBoundaryToken, DEFAULT_BOUNDARY_PATTERNS } from './scanner/boundary-scrub.js';
 export type { BoundaryScrubOptions, BoundaryScrubResult } from './scanner/boundary-scrub.js';
