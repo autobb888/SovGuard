@@ -20,6 +20,7 @@ export const TOOL_SCHEMA_INTEGRITY_KEYS = [
   'inputSchema',
   'parameters',
   'annotations',
+  '_meta',
 ] as const;
 
 /** Minimal MCP-style tool schema surface. */
@@ -43,6 +44,8 @@ export interface ToolSchema {
   };
   /** MCP ToolAnnotations — titles / hints that hosts may surface to the model. */
   annotations?: Record<string, unknown>;
+  /** MCP _meta bag — attacker-controllable strings must be hashed + scanned. */
+  _meta?: Record<string, unknown>;
   [k: string]: unknown;
 }
 
@@ -159,6 +162,7 @@ export function hashToolSchema(schema: ToolSchema): string {
     // Prefer inputSchema; fall back to parameters (same as argSchema)
     inputSchema: argSchema(schema) ?? null,
     annotations: schema.annotations ?? null,
+    _meta: schema._meta ?? null,
   };
   return createHash('sha256').update(stableStringify(payload)).digest('hex');
 }
