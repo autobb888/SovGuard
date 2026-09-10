@@ -237,3 +237,6 @@ export type { PeerEnvelope, PeerIngestOptions, PeerIngestResult } from './delive
 
 export { detectDelayedTrigger, DelayedTriggerWatch, delayedTriggerWatch } from './scanner/delayed-trigger.js';
 export type { DelayedTriggerHit, DelayedArm } from './scanner/delayed-trigger.js';
+
+export { detectDecomposition, DecompositionWatch, decompositionWatch } from './scanner/decomposition.js';
+export type { DecompositionHit, FragmentEntry } from './scanner/decomposition.js';

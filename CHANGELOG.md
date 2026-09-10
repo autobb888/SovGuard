@@ -1,6 +1,11 @@
 ## Unreleased
 
 ### Added
+- DL-009: decomposition / split-payload heuristics + session fragment correlation
+
+## Unreleased
+
+### Added
 - DL-008: delayed/sleeping trigger heuristics + session escalate (`delayed-trigger.ts`)
 
 ## Unreleased

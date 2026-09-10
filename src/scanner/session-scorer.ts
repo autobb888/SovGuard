@@ -16,6 +16,7 @@ import {
   detectSafetyTopic,
 } from './skeleton-key.js';
 import { delayedTriggerWatch, detectDelayedTrigger } from './delayed-trigger.js';
+import { decompositionWatch } from './decomposition.js';
 
 export interface SessionScoreEntry {
   score: number;
@@ -140,6 +141,15 @@ export class SessionScorer {
         }
       }
     }
+    if (text) {
+      const decompHit = decompositionWatch.record(sessionId, text);
+      if (decompHit.found) {
+        meta.forceEscalated = true;
+        category = category ?? 'encoding_trick';
+        score = Math.max(score, 0.5);
+      }
+    }
+
 
 
     let effectiveScore = score;
