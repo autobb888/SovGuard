@@ -9,6 +9,7 @@
 - DL-008: delayed/sleeping trigger heuristics + session escalate (`delayed-trigger.ts`)
 - DL-007: inter-agent peer envelopes (`data` ↛ instruction) via `ingestPeerEnvelope`
 - DL-006: boundary/special-token scrub on untrusted scanContext paths (`src/scanner/boundary-scrub.ts`)
+- **DL-002:** `normalizeToFixedPoint` (maxIters) with bidi strip + stegoReassembly signals; wired into regexScan variants and classifierInput. Escalate on Tags/bidi/multi-iter only — not bare NFKC.
 - DL-005: `scanToolSchema` / schemaHash consent / rug_pull / cross-server shadowing (`src/scanner/tool-schema.ts`)
 - **DL-001 / `POST /v1/wrap`:** when `sessionId` is set, wrap now records into `SessionScorer`, attaches (or reuses) a session canary, and may escalate classification. Previously `sessionId` was metadata-only on wrap. Unexpired canaries are reused across wraps for the same session so earlier-turn leak checks stay valid.
 - **DL-003:** SessionScorer wires `categoryDiversity` into `escalated`; Skeleton Key policy_rewrite + ack heuristics; `/v1/scan` and `/v1/wrap` non-advisory classification bump when session escalated. Residual FP: long benign research threads / soft ack phrases.
