@@ -1187,11 +1187,21 @@ export function bidiCorroborated(fp: FixedPointNorm): boolean {
 /**
  * Escalate Unicode signals for medium+ scoring.
  * DL-002b: bare bidi alone does NOT escalate (RTL FP); require corroboration.
+ * DL-002c: bare unicode_escape alone does NOT escalate; require corroboration
+ * (stego / tag / VS / escape with zw|bidi|tag|VS).
  */
 export function shouldEscalateUnicodeSignals(fp: FixedPointNorm): boolean {
   if (fp.stegoReassembly) return true;
   if (fp.signals.includes('unicode_tag') || fp.signals.includes('variation_selector')) return true;
-  if (fp.signals.includes('unicode_escape')) return true;
+  if (fp.signals.includes('unicode_escape')) {
+    return (
+      fp.signals.includes('zw') ||
+      fp.signals.includes('bidi') ||
+      fp.signals.includes('unicode_tag') ||
+      fp.signals.includes('variation_selector') ||
+      fp.stegoReassembly
+    );
+  }
   if (fp.signals.includes('bidi')) return bidiCorroborated(fp);
   return false;
 }
