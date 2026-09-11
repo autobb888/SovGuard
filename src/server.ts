@@ -13,6 +13,8 @@ import { scanPool, ScanPoolSaturatedError } from './scanner/scan-pool.js';
 import { ScanBody, ScanFileBody, ScanFileContentBody, ScanOutputBody, ScanReportBody, WrapBody, CanaryCreateBody, CanaryCheckBody } from './schemas.js';
 import { SessionScorer } from './scanner/session-scorer.js';
 import { bumpClassification, handleWrapRoute } from './wrap-route.js';
+import { resolveScanMode, scanModeResponseMeta } from './scanner/scan-mode.js';
+import { recordScanLog } from './tenant/scan-log.js';
 import { hashId } from './outbound/contamination.js';
 import { resolveMode, annotateVerdict } from './verdict-annotation.js';
 import { version } from './version.js';
@@ -77,15 +79,64 @@ app.addHook('preHandler', async (req, reply) => {
 
 app.post('/v1/scan', async (req) => {
   const body = ScanBody.parse(req.body);
-  const result = await engine.scan(body.text, { jobCategory: body.jobCategory });
+  const resolved = resolveScanMode({ mode: body.mode, source: body.source });
+  const modeMeta = scanModeResponseMeta(resolved);
+
+  // Prefer scanContext when source or non-default mode needs routing/scrub.
+  const useContext =
+    body.source != null ||
+    body.mode != null ||
+    resolved.mode !== 'user_chat';
+
+  let result;
+  if (useContext) {
+    const ctx = await engine.scanContext(body.text, {
+      source: body.source,
+      mode: body.mode ?? resolved.mode,
+      jobCategory: body.jobCategory,
+    });
+    result = ctx.scan;
+  } else {
+    result = await engine.scan(body.text, { jobCategory: body.jobCategory });
+  }
+
   if (body.sessionId) {
     const primary = result.flags[0]?.split(':')[0] as import('./types.js').AttackCategory | undefined;
     const esc = sessionScorer.record(body.sessionId, result.score, primary, body.text);
     const effective = esc.escalated ? bumpClassification(result) : result;
     const annotated = annotateVerdict(effective, enforcementMode);
-    return { ...annotated, session: { escalated: esc.escalated, rollingSum: esc.rollingSum, windowSize: esc.windowSize } };
+    try {
+      recordScanLog({
+        direction: 'inbound',
+        inputText: body.text,
+        score: effective.score,
+        classification: effective.classification,
+        flags: effective.flags,
+        layers: effective.layers,
+        mode: resolved.mode,
+        modeSource: resolved.modeSource,
+      });
+    } catch { /* best-effort */ }
+    return {
+      ...annotated,
+      session: { escalated: esc.escalated, rollingSum: esc.rollingSum, windowSize: esc.windowSize },
+      meta: modeMeta,
+    };
   }
-  return annotateVerdict(result, enforcementMode);
+  const annotated = annotateVerdict(result, enforcementMode);
+  try {
+    recordScanLog({
+      direction: 'inbound',
+      inputText: body.text,
+      score: result.score,
+      classification: result.classification,
+      flags: result.flags,
+      layers: result.layers,
+      mode: resolved.mode,
+      modeSource: resolved.modeSource,
+    });
+  } catch { /* best-effort */ }
+  return { ...annotated, meta: modeMeta };
 });
 
 app.post('/v1/scan/file', async (req) => {
@@ -144,6 +195,7 @@ app.post('/v1/wrap', async (req, reply) => {
     ...(result.notify ? { notify: result.notify } : {}),
     ...(result.session ? { session: result.session } : {}),
     ...(result.canary ? { canary: result.canary } : {}),
+    ...(result.meta ? { meta: result.meta } : {}),
   };
 });
 

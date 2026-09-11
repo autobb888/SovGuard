@@ -92,11 +92,17 @@ function runMigrations(database: Database.Database): void {
       classification TEXT NOT NULL,
       flags TEXT NOT NULL DEFAULT '[]',
       layers TEXT NOT NULL DEFAULT '[]',
-      created_at INTEGER NOT NULL
+      created_at INTEGER NOT NULL,
+      mode TEXT,
+      mode_source TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_scan_log_created ON scan_log(created_at);
     CREATE INDEX IF NOT EXISTS idx_scan_log_tenant ON scan_log(tenant_id, created_at);
   `);
+
+  // DL-011c: additive columns for existing DBs created before mode landed
+  try { database.exec(`ALTER TABLE scan_log ADD COLUMN mode TEXT`); } catch { /* exists */ }
+  try { database.exec(`ALTER TABLE scan_log ADD COLUMN mode_source TEXT`); } catch { /* exists */ }
 
   // Migration: scan_reports table for false positive/negative feedback
   database.exec(`

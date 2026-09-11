@@ -15,6 +15,13 @@ import { detectDelayedTrigger } from './delayed-trigger.js';
 import { detectDecomposition, decompositionWatch } from './decomposition.js';
 import { detectManyShot } from './many-shot.js';
 import type { ScanResult, SovGuardConfig } from '../types.js';
+import {
+  resolveScanMode,
+  shouldScrubForMode,
+  scanModeResponseMeta,
+  type ScanMode,
+  type ScanModeMeta,
+} from './scan-mode.js';
 
 /** Where a piece of text entered the agent's context, in increasing distrust. */
 export type SourceTrust =
@@ -35,10 +42,13 @@ export type TaintPolicy = 'block' | 'strip' | 'quarantine';
 export type TaintAction = 'allow' | 'block' | 'strip' | 'quarantine';
 
 export interface ContextScanOptions extends SovGuardConfig {
-  /** Required: where this text came from. Drives the trust decision. */
-  source: SourceTrust;
+  /** Where this text came from. Drives trust + mode inference when mode omitted.
+   *  Optional when `mode` is set explicitly (defaults to `user` for provenance echo). */
+  source?: SourceTrust;
   /** Containment policy for flagged untrusted content. Default: 'strip'. */
   policy?: TaintPolicy;
+  /** DL-011c: product scan mode. Explicit wins over source; default user_chat. */
+  mode?: ScanMode;
 }
 
 /** Routable notification emitted whenever content is contained. */
@@ -55,6 +65,7 @@ export interface TaintNotification {
 }
 
 export interface ContextScanResult {
+  /** Provenance used for this scan (defaults to `user` when omitted by caller). */
   source: SourceTrust;
   /** True only for sources we treat as the agent's own instructions. */
   trusted: boolean;
@@ -66,6 +77,13 @@ export interface ContextScanResult {
   scan: ScanResult;
   /** Present whenever action !== 'allow'. */
   notify?: TaintNotification;
+  /** DL-011c: resolved product mode (+ provenance of the resolution). */
+  mode: ScanMode;
+  modeSource: ScanModeMeta['modeSource'];
+  /** DL-011c: set when mode is security_research (advisory posture). */
+  advisory?: true;
+  /** DL-011c: compact meta echo for HTTP responses. */
+  meta: ReturnType<typeof scanModeResponseMeta>;
 }
 
 const TRUSTED_SOURCES: ReadonlySet<SourceTrust> = new Set<SourceTrust>(['user']);
@@ -73,14 +91,20 @@ const DEFAULT_POLICY: TaintPolicy = 'strip';
 const REDACTION = '[redacted: suspected injected instruction]';
 
 export async function scanContext(text: string, options: ContextScanOptions): Promise<ContextScanResult> {
-  const { source, policy, ...config } = options;
+  const { source: sourceOpt, policy, mode: modeOpt, ...config } = options;
+  const resolved = resolveScanMode({ mode: modeOpt, source: sourceOpt });
+  // Provenance echo: default user for chat/research; generic `file` when mode forces untrusted without source.
+  const source: SourceTrust = sourceOpt ?? (resolved.mode === 'untrusted_content' ? 'file' : 'user');
+  const meta = scanModeResponseMeta(resolved);
   const scanResult = await scan(text, config);
-  const trusted = TRUSTED_SOURCES.has(source);
+  // DL-011c: user_chat is the FP-safe path (scrub off / never muzzle), even when
+  // source is untrusted but explicit mode overrides. Source-only trust still
+  // applies when mode is untrusted_content / security_research.
+  const trusted = resolved.mode === 'user_chat' || TRUSTED_SOURCES.has(source);
 
-  // DL-006: scrub → Unicode fixed-point → scrub on untrusted ingress only
-  // so Tags/ZW/fullwidth cannot reconstitute delimiters after one pass.
+  // DL-006 + DL-011c: scrub on untrusted_content; security_research only if source≠user.
   let working = text;
-  if (!trusted) {
+  if (shouldScrubForMode(resolved.mode, sourceOpt)) {
     working = scrubUntrustedIngress(text).text;
   }
 
@@ -102,11 +126,15 @@ export async function scanContext(text: string, options: ContextScanOptions): Pr
     scanResult.score = Math.max(scanResult.score, 0.55);
   }
 
-  // Untrusted: many-shot forces contain. Trusted user: flag scan only (never muzzle).
+  // Untrusted: many-shot forces contain. Trusted / user_chat: flag scan only (never muzzle).
   const flagged = !trusted && (!scanResult.safe || delayedForce || decompForce || manyShotForce);
 
   if (!flagged) {
-    return { source, trusted, flagged, action: 'allow', text: working, scan: scanResult };
+    return {
+      source, trusted, flagged, action: 'allow', text: working, scan: scanResult,
+      mode: resolved.mode, modeSource: resolved.modeSource, ...(resolved.advisory ? { advisory: true as const } : {}),
+      meta,
+    };
   }
 
   // Prefer quarantine for delayed triggers even when policy is strip
@@ -159,6 +187,10 @@ export async function scanContext(text: string, options: ContextScanOptions): Pr
     text: outText,
     scan: scanResult,
     notify: buildNotification(source, action, scanResult),
+    mode: resolved.mode,
+    modeSource: resolved.modeSource,
+    ...(resolved.advisory ? { advisory: true as const } : {}),
+    meta,
   };
 }
 

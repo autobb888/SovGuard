@@ -55,7 +55,7 @@ export class SovGuardEngine {
    * routable notification; trusted user input is never muzzled. This is the
    * primitive for gating data as it flows into an agent's context.
    */
-  async scanContext(message: string, options: { source: SourceTrust; policy?: TaintPolicy }): Promise<ContextScanResult> {
+  async scanContext(message: string, options: ContextScanOptions): Promise<ContextScanResult> {
     const result = await scanContext(message, { ...this.config, ...options });
     recordScan(result.scan);
     return result;

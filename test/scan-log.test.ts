@@ -20,7 +20,9 @@ describe('scan_log table', () => {
         classification TEXT NOT NULL,
         flags TEXT NOT NULL DEFAULT '[]',
         layers TEXT NOT NULL DEFAULT '[]',
-        created_at INTEGER NOT NULL
+        created_at INTEGER NOT NULL,
+        mode TEXT,
+        mode_source TEXT
       );
       CREATE INDEX IF NOT EXISTS idx_scan_log_created ON scan_log(created_at);
       CREATE INDEX IF NOT EXISTS idx_scan_log_tenant ON scan_log(tenant_id, created_at);
@@ -33,12 +35,12 @@ describe('scan_log table', () => {
     const id = randomUUID();
     const now = Date.now();
     db.prepare(`
-      INSERT INTO scan_log (id, tenant_id, key_prefix, direction, input_text, score, classification, flags, layers, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO scan_log (id, tenant_id, key_prefix, direction, input_text, score, classification, flags, layers, created_at, mode, mode_source)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(id, 'tenant-1', 'sg_abc1', 'inbound', 'test message', 0.85, 'likely_injection',
       JSON.stringify(['instruction_override:system_prompt']),
       JSON.stringify([{ layer: 'regex', score: 0.85, flags: ['instruction_override:system_prompt'] }]),
-      now
+      now, 'untrusted_content', 'inferred_from_source'
     );
 
     const row = db.prepare('SELECT * FROM scan_log WHERE id = ?').get(id) as any;
@@ -50,6 +52,8 @@ describe('scan_log table', () => {
     assert.equal(row.classification, 'likely_injection');
     assert.deepEqual(JSON.parse(row.flags), ['instruction_override:system_prompt']);
     assert.equal(JSON.parse(row.layers)[0].layer, 'regex');
+    assert.equal(row.mode, 'untrusted_content');
+    assert.equal(row.mode_source, 'inferred_from_source');
   });
 
   it('should query by created_at for pruning', () => {

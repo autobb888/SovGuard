@@ -5,6 +5,12 @@ import type { SovGuardEngine } from './index.js';
 import type { AttackCategory, CanaryToken, Classification, ScanResult, WrappedMessage } from './types.js';
 import type { SessionEscalation, SessionScorer } from './scanner/session-scorer.js';
 import type { SourceTrust, TaintAction, TaintNotification, TaintPolicy } from './scanner/context.js';
+import {
+  resolveScanMode,
+  scanModeResponseMeta,
+  type ScanMode,
+  type ScanModeMeta,
+} from './scanner/scan-mode.js';
 import { getToken } from './canary/tokens.js';
 
 export interface WrapRouteBody {
@@ -14,6 +20,8 @@ export interface WrapRouteBody {
   sessionId?: string;
   source?: SourceTrust;
   policy?: TaintPolicy;
+  /** DL-011c product mode — explicit wins over source. */
+  mode?: ScanMode;
 }
 
 export interface WrapRouteResult {
@@ -29,6 +37,11 @@ export interface WrapRouteResult {
   canary?: CanaryToken;
   error?: string;
   statusCode?: number;
+  /** DL-011c resolved mode meta (also nested under meta for HTTP echo). */
+  mode?: ScanMode;
+  modeSource?: ScanModeMeta['modeSource'];
+  advisory?: true;
+  meta?: ReturnType<typeof scanModeResponseMeta>;
 }
 
 /** Force classification to at least suspicious when the session has escalated. */
@@ -70,10 +83,26 @@ export async function handleWrapRoute(
   let action: TaintAction | undefined;
   let notify: TaintNotification | undefined;
 
-  if (body.source) {
+  const resolved = resolveScanMode({ mode: body.mode, source: body.source });
+  const modeMeta = scanModeResponseMeta(resolved);
+  const modeFields = {
+    mode: resolved.mode,
+    modeSource: resolved.modeSource,
+    ...(resolved.advisory ? { advisory: true as const } : {}),
+    meta: modeMeta,
+  };
+
+  // Run scanContext when source is set OR when mode requires scrub.
+  const needsContext =
+    body.source != null ||
+    resolved.mode === 'untrusted_content' ||
+    (resolved.mode === 'security_research' && body.source != null && body.source !== 'user');
+
+  if (needsContext) {
     const ctx = await engine.scanContext(body.text, {
       source: body.source,
       policy: body.policy,
+      mode: body.mode ?? resolved.mode,
     });
     scan = ctx.scan;
     action = ctx.action;
@@ -85,6 +114,7 @@ export async function handleWrapRoute(
         notify,
         error: 'blocked by scanContext policy',
         statusCode: 422,
+        ...modeFields,
       };
     }
     // strip → wrap sanitized plaintext; quarantine/allow → wrap original (Spotlight once)
@@ -123,5 +153,5 @@ export async function handleWrapRoute(
     canaryToken: canary?.token,
   });
 
-  return { scan, wrapped, action, notify, session, canary };
+  return { scan, wrapped, action, notify, session, canary, ...modeFields };
 }

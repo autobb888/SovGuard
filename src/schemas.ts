@@ -5,21 +5,11 @@
 
 import { z } from 'zod';
 
-export const ScanBody = z.object({
-  text: z.string().min(1).max(50000),
-  /** Optional session id — enables multi-turn crescendo detection (C4). */
-  sessionId: z.string().min(1).max(256).optional(),
-  /** Optional job category — CODE_CATEGORIES suppress inbound code-content FPs so a
-   *  code-review job's code isn't flagged as injection (injection patterns stay active). */
-  jobCategory: z.string().min(1).max(256).optional(),
-});
-
-export const ScanFileBody = z.object({
-  filename: z.string().min(1).max(1000),
-  metadata: z.record(z.union([z.string().max(10000), z.number()]))
-    .refine(obj => Object.keys(obj).length <= 50, { message: 'Maximum 50 metadata keys' })
-    .optional(),
-});
+export const ScanModeEnum = z.enum([
+  'user_chat',
+  'untrusted_content',
+  'security_research',
+]);
 
 export const SourceTrustEnum = z.enum([
   'user',
@@ -33,6 +23,26 @@ export const SourceTrustEnum = z.enum([
   'file',
 ]);
 
+export const ScanBody = z.object({
+  text: z.string().min(1).max(50000),
+  /** Optional session id — enables multi-turn crescendo detection (C4). */
+  sessionId: z.string().min(1).max(256).optional(),
+  /** Optional job category — CODE_CATEGORIES suppress inbound code-content FPs so a
+   *  code-review job's code isn't flagged as injection (injection patterns stay active). */
+  jobCategory: z.string().min(1).max(256).optional(),
+  /** DL-011c: provenance source — when mode omitted, drives ScanMode inference. */
+  source: SourceTrustEnum.optional(),
+  /** DL-011c: product scan mode (explicit wins over source). Default: user_chat. */
+  mode: ScanModeEnum.optional(),
+});
+
+export const ScanFileBody = z.object({
+  filename: z.string().min(1).max(1000),
+  metadata: z.record(z.union([z.string().max(10000), z.number()]))
+    .refine(obj => Object.keys(obj).length <= 50, { message: 'Maximum 50 metadata keys' })
+    .optional(),
+});
+
 export const WrapBody = z.object({
   text: z.string().min(1).max(50000),
   role: z.string().min(1).max(256).optional(),
@@ -41,6 +51,8 @@ export const WrapBody = z.object({
   /** When set, /v1/wrap runs scanContext first (containment by source/policy). */
   source: SourceTrustEnum.optional(),
   policy: z.enum(['block', 'strip', 'quarantine']).optional(),
+  /** DL-011c: product scan mode (explicit wins over source). Default: user_chat. */
+  mode: ScanModeEnum.optional(),
 });
 
 export const CanaryCreateBody = z.object({ sessionId: z.string().min(1).max(256) });
@@ -86,4 +98,3 @@ export const ScanReportBody = z.object({
   verdict: z.enum(['false_positive', 'false_negative', 'confirmed']),
   notes: z.string().max(1000).optional(),
 });
-
