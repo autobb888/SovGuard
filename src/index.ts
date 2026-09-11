@@ -201,7 +201,7 @@ export type { TopicRailsConfig, DeniedTopic, TopicMatch } from './scanner/topic-
 export { getDb, setDb, closeDb } from './tenant/db.js';
 export { ScanReportBody } from './schemas.js';
 
-export { normalizeToFixedPoint, shouldEscalateUnicodeSignals, stripBidiOverrides } from './scanner/regex.js';
+export { normalizeToFixedPoint, shouldEscalateUnicodeSignals, bidiCorroborated, stripBidiOverrides } from './scanner/regex.js';
 export type { FixedPointNorm } from './scanner/regex.js';
 
 export { detectPolicyRewrite, detectPolicyAck, detectCrescendoProbe } from './scanner/skeleton-key.js';

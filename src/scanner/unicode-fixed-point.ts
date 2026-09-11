@@ -2,6 +2,7 @@
 export {
   normalizeToFixedPoint,
   shouldEscalateUnicodeSignals,
+  bidiCorroborated,
   stripBidiOverrides,
   decodeCodePointEscapes,
   materializeUnicodeTags,

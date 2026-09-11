@@ -539,7 +539,12 @@ export function regexScan(text: string, extraPatterns?: PatternDef[]): LayerResu
         matched: `[fixed_point iters=${fixedPoint.iters}] ${fixedPoint.text.slice(0, 80)}`,
       });
     }
-    if (fixedPoint.signals.includes('bidi') && !seenLabels.has('bidi_override')) {
+    // DL-002b: medium bidi_override only when corroborated (not bare RTL isolates)
+    if (
+      fixedPoint.signals.includes('bidi') &&
+      bidiCorroborated(fixedPoint) &&
+      !seenLabels.has('bidi_override')
+    ) {
       seenLabels.add('bidi_override');
       mergedMatches.push({
         pattern: 'bidi_override',
@@ -1168,10 +1173,26 @@ export function normalizeToFixedPoint(text: string, maxIters = 4): FixedPointNor
   };
 }
 
+/** True when bidi co-occurs with stronger stego/injection-adjacent signals. */
+export function bidiCorroborated(fp: FixedPointNorm): boolean {
+  return (
+    fp.stegoReassembly ||
+    fp.signals.includes('zw') ||
+    fp.signals.includes('unicode_tag') ||
+    fp.signals.includes('unicode_escape') ||
+    fp.signals.includes('variation_selector')
+  );
+}
+
+/**
+ * Escalate Unicode signals for medium+ scoring.
+ * DL-002b: bare bidi alone does NOT escalate (RTL FP); require corroboration.
+ */
 export function shouldEscalateUnicodeSignals(fp: FixedPointNorm): boolean {
   if (fp.stegoReassembly) return true;
-  return fp.signals.some((s) =>
-    s === 'unicode_tag' || s === 'bidi' || s === 'variation_selector' || s === 'unicode_escape',
-  );
+  if (fp.signals.includes('unicode_tag') || fp.signals.includes('variation_selector')) return true;
+  if (fp.signals.includes('unicode_escape')) return true;
+  if (fp.signals.includes('bidi')) return bidiCorroborated(fp);
+  return false;
 }
 

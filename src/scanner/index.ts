@@ -34,15 +34,35 @@ export function detectDegradation(layers: LayerResult[]): { degraded: boolean; d
  * ("I have 3 cats" → "e cats"). The regex layer handles leetspeak separately.
  */
 export function classifierInput(text: string): string {
-  // DL-002: prefer fixed-point text when stego/bidi/tags/escapes were present
+  // DL-002b: rewrite for the model only on strong signals (tags/stego/VS/
+  // corroborated bidi). Bare zw or bare unicode_escape alone must not rewrite.
   const fp = normalizeToFixedPoint(text);
-  if (fp.signals.length > 0 && fp.text !== text) {
+  const strong =
+    fp.stegoReassembly ||
+    fp.signals.includes('unicode_tag') ||
+    fp.signals.includes('variation_selector') ||
+    (fp.signals.includes('bidi') &&
+      (fp.stegoReassembly ||
+        fp.signals.includes('zw') ||
+        fp.signals.includes('unicode_tag') ||
+        fp.signals.includes('unicode_escape') ||
+        fp.signals.includes('variation_selector')));
+  if (strong && fp.text !== text) {
     return fp.text;
   }
+  // Confusable/fullwidth fold still OK when visible tokens change.
+  // If the only delta is invisible/bidi strip, keep verbatim for the model.
   const normalized = normalizeConfusables(normalizeStrip(text));
   const stripWs = (s: string) => s.replace(/\s+/g, '');
-  return stripWs(normalized) !== stripWs(text) ? normalized : text;
+  if (stripWs(normalized) === stripWs(text)) return text;
+  const onlyInvis = text.replace(
+    /[\u200B-\u200F\u2028-\u202F\u2060-\u206F\uFEFF\u00AD\u0000-\u0008\u000B\u000C\u000E-\u001F\u202A-\u202E]/g,
+    '',
+  );
+  if (stripWs(normalized) === stripWs(onlyInvis)) return text;
+  return normalized;
 }
+
 
 /**
  * Combine per-layer scores into a single 0–1 risk score.

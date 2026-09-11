@@ -1,6 +1,11 @@
 ## Unreleased
 
 ### Fixed
+- DL-002b: bare bidi no longer medium-escalates; classifierInput rewrite gated to strong Unicode signals
+
+## Unreleased
+
+### Fixed
 - DL-006b: tool-schema scan uses scrubUntrustedIngress (scrub→FP→scrub)
 
 ## Unreleased
