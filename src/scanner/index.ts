@@ -9,6 +9,7 @@ import { CODE_CATEGORIES, CODE_CONTENT_LABELS } from './code-categories.js';
 import { classifierScan } from './classifier.js';
 import { semanticScan } from './semantic.js';
 import { retrievalDualMarginScan } from './retrieval-dual-margin.js';
+import { piguardScan } from './classifier-piguard.js';
 import { scanPool } from './scan-pool.js';
 import { runJsLayersSync } from './js-layers.js';
 
@@ -114,8 +115,10 @@ export function combineScores(
   const benignSim = typeof semanticLayer?.details?.benignSim === 'number' ? semanticLayer.details.benignSim as number : 0;
 
   // "Keyword" corroboration = any non-classifier, non-semantic layer (regex/perplexity/indirect).
+  // classifier_piguard is excluded from keyword corroboration (dual-agree block out of v1).
+  // It still contributes to maxAll (emit capped ≤0.45 so it cannot sole-block).
   const maxKeyword = Math.max(
-    ...layers.filter(l => l.layer !== 'classifier' && l.layer !== 'semantic').map(l => l.score),
+    ...layers.filter(l => l.layer !== 'classifier' && l.layer !== 'semantic' && l.layer !== 'classifier_piguard').map(l => l.score),
     0,
   );
 
@@ -254,6 +257,24 @@ export async function scan(text: string, config: SovGuardConfig = {}): Promise<S
         mode: config.mode,
         otherMax,
         lightPiCue,
+      }),
+    ];
+    const pa = layers.find((l) => l.layer === 'classifier')?.score ?? 0;
+    const retrievalLayer = layers.find((l) => l.layer === 'retrieval_dual_margin');
+    const retrievalHit = (retrievalLayer?.score ?? 0) >= 0.3;
+    const semanticLayer = layers.find((l) => l.layer === 'semantic');
+    const attackSim =
+      (typeof semanticLayer?.details?.attackSim === 'number'
+        ? (semanticLayer.details.attackSim as number)
+        : semanticLayer?.score) ?? 0;
+    layers = [
+      ...layers,
+      await piguardScan(input, {
+        mode: config.mode,
+        pa,
+        retrievalHit,
+        lightPiCue,
+        attackSim,
       }),
     ];
   }
