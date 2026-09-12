@@ -1,6 +1,7 @@
 ## Unreleased
 
 ### Added
+- **DL-011d D1c:** AttackIndex miss∩ expand — tag train-11 `source=miss_intersect` (idempotent); refuse holdout originals (14). Not an 80% claim. See `docs/retrieval-dual-margin.md`.
 - **DL-011d D1b:** AttackIndex paraphrase expand (36 holdout-parent entries, `source=paraphrase`). Holdout originals stay unindexed. No PIGuard combine / τ / RO / escalate change. Not an 80% claim. See `docs/retrieval-dual-margin.md`.
 - **DL-011d D1 follow-on:** `prepareCompatTokenizer` never writes into `PIGUARD_DIR` (Docker `:ro`); prefer `Tokenizer.fromString`; fallback `SOVGUARD_PIGUARD_TMP` / tmpdir.
 - **DL-011d D1:** `classifier_piguard` secondary layer — PIGuard ONNX under `untrusted_content` only; corroboration required; never sole-block (emit ≤0.45). Soft residual: unofficial ONNX export of leolee99/PIGuard + Node Metaspace tokenizer compat. See `docs/classifier-piguard.md`.

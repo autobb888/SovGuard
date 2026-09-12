@@ -1,21 +1,12 @@
 /**
- * Build frozen AttackIndex / BenignIndex for DL-011 S3-v1a + D1b paraphrases.
+ * Build frozen AttackIndex / BenignIndex for DL-011 S3-v1a + D1b paraphrases + D1c miss∩.
  *
  * Usage (from sovguard repo root, MiniLM present):
  *   npx tsx scripts/build-retrieval-index-v1a.ts
  *
- * Reads:
- *   pentest/payloads/dl011c-mode-untrusted.json
- *   pentest/payloads/dl011c-mode-chat.json
- *   pentest/payloads/s3-attackindex-paraphrases.json  (D1b; optional if absent)
- *   data/retrieval/s3-v1a-split.json
- * Writes:
- *   data/retrieval/attack-index-v1.json
- *   data/retrieval/benign-index-v1.json
- *   data/retrieval/holdout-eval-v1.json (ids-only)
- *
- * D1b: reuses existing train vectors when present (no re-embed jitter).
- * Holdout original IDs are never indexed. Paraphrases tag source=paraphrase.
+ * D1b: reuses train + paraphrase vectors (no re-embed jitter).
+ * D1c: tags train miss∩ as source=miss_intersect; REFUSES holdout originals / *-miss holdout ids.
+ * Unique-hit paraphrases (29) are out of scope.
  */
 
 import { createHash } from 'node:crypto';
@@ -28,6 +19,11 @@ import {
   holdoutOriginalsInIndex,
   type ParaFixture,
 } from '../src/scanner/attack-index-paraphrases.js';
+import {
+  selectTrainMissIntersect,
+  holdoutMissIdsInIndex,
+  type MissFixture,
+} from '../src/scanner/attack-index-miss.js';
 
 const ROOT = process.cwd();
 const OUT_DIR = process.env.SOVGUARD_RETRIEVAL_DIR || join(ROOT, 'data', 'retrieval');
@@ -83,31 +79,47 @@ async function embedIds(
   return out;
 }
 
-function reuseTrainVectors(trainIds: string[]): AttackEntry[] | null {
+function loadExistingAttack(): AttackEntry[] {
   const path = join(OUT_DIR, 'attack-index-v1.json');
-  if (!existsSync(path)) return null;
+  if (!existsSync(path)) return [];
   try {
     const doc = loadJson<{ entries: Array<Partial<AttackEntry>> }>(path);
-    const byId = new Map<string, AttackEntry>();
-    for (const e of doc.entries ?? []) {
-      if (!e.id || !Array.isArray(e.vector) || e.vector.length === 0) continue;
-      if (!trainIds.includes(e.id)) continue;
-      byId.set(e.id, {
-        id: e.id,
-        class: e.class,
-        text: e.text,
-        vector: e.vector,
-      });
-    }
-    if (byId.size !== trainIds.length) {
-      console.warn(`[build-index] reuse miss: have ${byId.size}/${trainIds.length} train vectors`);
-      return null;
-    }
-    console.log(`[build-index] reusing ${byId.size} existing train vectors (no re-embed)`);
-    return trainIds.map((id) => byId.get(id)!);
+    return (doc.entries ?? []).filter(
+      (e): e is AttackEntry => !!e.id && Array.isArray(e.vector) && e.vector.length > 0,
+    ) as AttackEntry[];
   } catch {
+    return [];
+  }
+}
+
+function reuseTrainVectors(trainIds: string[], existing: AttackEntry[]): AttackEntry[] | null {
+  const byId = new Map<string, AttackEntry>();
+  for (const e of existing) {
+    if (!trainIds.includes(e.id)) continue;
+    byId.set(e.id, {
+      id: e.id,
+      class: e.class,
+      text: e.text,
+      source: e.source,
+      parentHoldoutId: e.parentHoldoutId,
+      vector: e.vector,
+    });
+  }
+  if (byId.size !== trainIds.length) {
+    console.warn(`[build-index] reuse miss: have ${byId.size}/${trainIds.length} train vectors`);
     return null;
   }
+  console.log(`[build-index] reusing ${byId.size} existing train vectors (no re-embed)`);
+  return trainIds.map((id) => byId.get(id)!);
+}
+
+function reuseParaphrases(existing: AttackEntry[]): AttackEntry[] | null {
+  const paras = existing.filter((e) => e.source === 'paraphrase');
+  if (paras.length === 36) {
+    console.log(`[build-index] reusing ${paras.length} existing paraphrase vectors (no re-embed)`);
+    return paras;
+  }
+  return null;
 }
 
 function reuseBenign(benignIds: string[]): AttackEntry[] | null {
@@ -171,6 +183,40 @@ async function embedParaphrases(split: SplitFile): Promise<AttackEntry[]> {
   return out;
 }
 
+async function applyMissIntersect(split: SplitFile, attackEntries: AttackEntry[]): Promise<{ tagged: number; added: number; refused: number }> {
+  const missPath = join(ROOT, 'pentest/payloads/dl011d-d1-expand-miss.json');
+  if (!existsSync(missPath)) {
+    console.warn('[build-index] no miss∩ pack');
+    return { tagged: 0, added: 0, refused: 0 };
+  }
+  const pack = loadJson<{ fixtures: MissFixture[] }>(missPath);
+  const { train, refusedHoldout } = selectTrainMissIntersect(pack.fixtures, split.trainIds, split.holdoutIds);
+  console.log(`[build-index] miss∩ train=${train.length} refusedHoldout=${refusedHoldout.length}`);
+  let tagged = 0;
+  let added = 0;
+  for (const f of train) {
+    const existing = attackEntries.find((e) => e.id === f.sourceId);
+    if (existing) {
+      if (existing.source !== 'paraphrase') existing.source = 'miss_intersect';
+      tagged += 1;
+      continue;
+    }
+    if (!f.text) throw new Error(`miss∩ ${f.sourceId} missing text and not in index`);
+    const vec = await embedText(f.text);
+    if (!vec) throw new Error(`embed failed for miss∩ ${f.sourceId}`);
+    attackEntries.push({
+      id: f.sourceId,
+      class: 'miss-intersect',
+      text: f.text,
+      source: 'miss_intersect',
+      vector: Array.from(vec),
+    });
+    added += 1;
+    console.log(`[build-index] miss∩ added ${f.sourceId}`);
+  }
+  return { tagged, added, refused: refusedHoldout.length };
+}
+
 async function main(): Promise<void> {
   if (!isEmbeddingModelAvailable()) {
     console.error('[build-index] MiniLM model not found. Run scripts/download-embedding-model.sh first.');
@@ -197,16 +243,22 @@ async function main(): Promise<void> {
 
   console.log(`[build-index] train=${split.trainIds.length} holdout=${split.holdoutIds.length} benign=${split.benignIds.length}`);
 
-  let attackEntries = reuseTrainVectors(split.trainIds);
+  const existing = loadExistingAttack();
+  let attackEntries = reuseTrainVectors(split.trainIds, existing);
   if (!attackEntries) {
     attackEntries = await embedIds(split.trainIds, atkById);
   }
 
-  const paraphrases = await embedParaphrases(split);
+  let paraphrases = reuseParaphrases(existing);
+  if (!paraphrases) paraphrases = await embedParaphrases(split);
   attackEntries = [...attackEntries, ...paraphrases];
+
+  const miss = await applyMissIntersect(split, attackEntries);
 
   const leak = holdoutOriginalsInIndex(attackEntries, split.holdoutIds);
   if (leak.length) throw new Error(`holdout originals leaked into AttackIndex: ${leak.join(',')}`);
+  const leakMiss = holdoutMissIdsInIndex(attackEntries, split.holdoutIds);
+  if (leakMiss.length) throw new Error(`holdout *-miss leaked into AttackIndex: ${leakMiss.join(',')}`);
 
   let benignEntries = reuseBenign(split.benignIds);
   if (!benignEntries) {
@@ -219,13 +271,14 @@ async function main(): Promise<void> {
   mkdirSync(OUT_DIR, { recursive: true });
 
   const attackDoc = {
-    version: paraphrases.length ? 'v1a-d1b' : 'v1a',
-    baseTip: '6749a45',
+    version: 'v1a-d1c',
+    baseTip: 'f6a5367',
     model: 'paraphrase-multilingual-MiniLM-L12-v2',
     dim: attackEntries[0]?.vector.length ?? 384,
     tauAtk: TAU_ATK,
     tauBen: TAU_BEN,
     checksum: attackChecksum,
+    missIntersect: { tagged: miss.tagged, added: miss.added, refusedHoldout: miss.refused },
     entries: attackEntries,
   };
   const benignDoc = {
@@ -239,18 +292,20 @@ async function main(): Promise<void> {
     entries: benignEntries,
   };
   const holdoutDoc = {
-    version: 'v1a-d1b',
-    baseTip: '6749a45',
+    version: 'v1a-d1c',
+    baseTip: 'f6a5367',
     holdoutIds: split.holdoutIds,
-    note: 'ids-only; holdout originals never embedded. D1b indexes paraphrases of these ids (source=paraphrase), not the originals.',
+    note: 'ids-only; holdout originals never embedded. D1b paraphrases cover holdout parents. D1c refuses miss∩ holdout originals (14); tags train miss∩ (11) source=miss_intersect.',
     paraphraseCount: paraphrases.length,
+    missIntersectTagged: miss.tagged,
+    missIntersectAdded: miss.added,
   };
 
   writeFileSync(join(OUT_DIR, 'attack-index-v1.json'), JSON.stringify(attackDoc, null, 2) + '\n');
   writeFileSync(join(OUT_DIR, 'benign-index-v1.json'), JSON.stringify(benignDoc, null, 2) + '\n');
   writeFileSync(join(OUT_DIR, 'holdout-eval-v1.json'), JSON.stringify(holdoutDoc, null, 2) + '\n');
 
-  console.log(`[build-index] wrote ${OUT_DIR}/attack-index-v1.json (n=${attackEntries.length} train=${split.trainIds.length} para=${paraphrases.length}, sha256=${attackChecksum.slice(0, 12)}…)`);
+  console.log(`[build-index] wrote ${OUT_DIR}/attack-index-v1.json (n=${attackEntries.length} train=${split.trainIds.length} para=${paraphrases.length} missTag=${miss.tagged} missAdd=${miss.added}, sha256=${attackChecksum.slice(0, 12)}…)`);
   console.log(`[build-index] wrote ${OUT_DIR}/benign-index-v1.json (n=${benignEntries.length}, sha256=${benignChecksum.slice(0, 12)}…)`);
   suggestTaus(attackEntries, benignEntries);
 }

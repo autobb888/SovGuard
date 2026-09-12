@@ -33,3 +33,7 @@ Download: `scripts/download-piguard-onnx.sh`. Not in npm `files[]` — self-host
 ## D1b (2026-09-12)
 
 No combine / τ_pg / emit / RO change. AttackIndex paraphrase expand is retrieval-only; this layer's fire rule is unchanged. Holdout-28 catch@≥0.3 **24/28** (D1 was 10/28); PG fire still 9/28. Expand is not an 80% claim.
+
+## D1c (2026-09-12)
+
+No combine / τ_pg / emit / RO change. Miss∩ expand is retrieval-index only. Holdout-28 catch@≥0.3 **24/28** (held vs D1b). miss∩-25 catch 23/25, PG fire 0/25 (soft ceiling). Not an 80% claim.

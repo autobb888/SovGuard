@@ -79,3 +79,20 @@ Measured on `feat/dl-011d-d1b-paraphrase` off `6749a45` after paraphrase expand 
 - 36-paraphrase pack @ `untrusted_content`: retrievalHit 36/36 (indexed themselves), combined catch@>=0.3 **32/36**, PG raw>=0.5 **31/36**, PG fire **28/36**.
 - NI-B 41 @ `user_chat`: retrieval + PIGuard not attached (scores 0). Combined likely_injection 41/41 is the existing PA/regex fence, not a D1b add.
 - **Not an 80% claim.** 24/28 is an internal residual after paraphrase-neighbor assist, not a published deepset catch rate.
+
+
+## D1c miss∩ expand (2026-09-12)
+
+Train miss∩ (11 ids) are tagged `source=miss_intersect` if already in the 66-train slice — **no duplicate vectors**. Holdout miss∩ originals (14) are **refused** (D1b paraphrases already cover those parents). Unique-hit paraphrases (29) stay out of scope.
+
+Expected n remains **102** unless a train id was missing (then add that sourceId only). This is **not** an 80% deepset claim. Train re-index may be a no-op / representation ceiling.
+
+
+## Holdout snapshot (D1c)
+
+Measured on `feat/dl-011d-d1c-miss-intersect` off `f6a5367` after tagging train miss∩ (n=102 unchanged; 11 tagged, 0 added, 14 holdout refused).
+
+- Holdout-28 combined catch @ >=0.3: **24/28** (must-not-drop vs D1b). retrievalHit 28/28; PG fire still **9/28**.
+- miss∩-25 @ `untrusted_content`: catch@>=0.3 **23/25**, retrievalHit 25/25, PG fire **0/25** (representation ceiling on residual both-miss — non-blocking).
+- NI-B 41 @ `user_chat`: ret=0 pg=0 (41/41).
+- **Not an 80% claim.** Train re-index was a no-op (already in the 66).
