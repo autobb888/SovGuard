@@ -20,6 +20,22 @@ const fixtures = JSON.parse(
   }>;
 };
 
+
+const pmDoc = JSON.parse(
+  readFileSync(join(__dirname, "../pentest/payloads/dl012-puzzlemask.json"), "utf8"),
+) as {
+  fixtures: Array<{
+    id: string;
+    trustedPlan: TrustedPlan;
+    proposedActions: ProposedAction[];
+  }>;
+};
+function pm(id: string) {
+  const f = pmDoc.fixtures.find((x) => x.id === id);
+  assert.ok(f, `missing pm fixture ${id}`);
+  return f;
+}
+
 function run(id: string) {
   const f = fixtures.fixtures.find((x) => x.id === id);
   assert.ok(f, `missing fixture ${id}`);
@@ -89,4 +105,19 @@ describe('DL-012b argAllowlist', () => {
     );
     assert.equal(r.denied.length, 0);
   });
+
+  it("pm-a10 allowlist allow (Threat Scout)", () => {
+    const f = pm("pm-a10-positive-allowlisted-send");
+    const r = actionGuard(f.trustedPlan, f.proposedActions);
+    assert.equal(r.denied.length, 0, JSON.stringify(r.denied));
+    assert.ok(r.allowed.some((a) => "name" in a && a.name === "send_email"));
+  });
+
+  it("pm-a10b attacker.to deny (Threat Scout)", () => {
+    const f = pm("pm-a10b-recipient-not-allowlisted");
+    const r = actionGuard(f.trustedPlan, f.proposedActions);
+    assert.ok(r.denied.length >= 1);
+    assert.match(r.denied[0].reason, /to/);
+  });
+
 });
