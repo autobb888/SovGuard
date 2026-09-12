@@ -184,4 +184,7 @@ export interface SovGuardConfig {
    *  suppresses pure code-content matches (eval/subprocess/os.system/"run command:")
    *  so ordinary review code is not flagged as injection. Injection/exfil patterns stay. */
   jobCategory?: string;
+  /** DL-011c / S3: product scan mode. Consumed by mode-gated layers (retrieval_dual_margin).
+   *  Router lives in scan-mode.ts; this field only carries the already-resolved mode. */
+  mode?: 'user_chat' | 'untrusted_content' | 'security_research';
 }

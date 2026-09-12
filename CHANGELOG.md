@@ -1,6 +1,7 @@
 ## Unreleased
 
 ### Added
+- **DL-011 S3-v1a:** `retrieval_dual_margin` layer — dual-margin near-neighbor over frozen Attack/Benign indexes; `untrusted_content` only; corroboration required; never sole-block (emit ≤0.45). See `docs/retrieval-dual-margin.md`.
 - DL-012b: empty arg arrays (`to: []` / `bcc: []`) fail closed when an allowlist key is present
 - DL-012b: TrustedPlan.argAllowlist exact-match for tool args (e.g. send_email.to)
 

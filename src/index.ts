@@ -5,6 +5,7 @@
 
 import { scan } from './scanner/index.js';
 import { scanContext } from './scanner/context.js';
+import type { ScanMode } from './scanner/scan-mode.js';
 import type { ContextScanOptions, ContextScanResult, SourceTrust, TaintPolicy, TaintAction, TaintNotification } from './scanner/context.js';
 import { wrapMessage } from './delivery/wrap.js';
 import { generateToken, checkLeak, getToken, revokeToken } from './canary/tokens.js';
@@ -39,10 +40,13 @@ export class SovGuardEngine {
   /**
    * Scan a message for prompt injection attacks.
    */
-  async scan(message: string, opts?: { jobCategory?: string }): Promise<ScanResult> {
-    // Per-request jobCategory (e.g. 'code-review') merges over the engine config so
-    // the inbound scan can suppress code-content false-positives for code jobs.
-    const cfg = opts?.jobCategory ? { ...this.config, jobCategory: opts.jobCategory } : this.config;
+  async scan(message: string, opts?: { jobCategory?: string; mode?: ScanMode }): Promise<ScanResult> {
+    // Per-request jobCategory / mode merge over the engine config.
+    const cfg = {
+      ...this.config,
+      ...(opts?.jobCategory ? { jobCategory: opts.jobCategory } : {}),
+      ...(opts?.mode ? { mode: opts.mode } : {}),
+    };
     const result = await scan(message, cfg);
     recordScan(result);
     return result;
@@ -175,8 +179,16 @@ export { SessionScorer } from './scanner/session-scorer.js';
 export type { SessionEscalation, SessionScorerConfig, SessionScoreEntry } from './scanner/session-scorer.js';
 export { scan } from './scanner/index.js';
 export { scanContext } from './scanner/context.js';
+export type { ScanMode } from './scanner/scan-mode.js';
 export type { ContextScanOptions, ContextScanResult, SourceTrust, TaintPolicy, TaintAction, TaintNotification } from './scanner/context.js';
 export { regexScan } from './scanner/regex.js';
+export {
+  retrievalDualMarginScan,
+  evaluateDualMargin,
+  TAU_ATK,
+  TAU_BEN,
+  LAYER_NAME as RETRIEVAL_DUAL_MARGIN_LAYER,
+} from './scanner/retrieval-dual-margin.js';
 export { perplexityScan } from './scanner/perplexity.js';
 export { classifierScan } from './scanner/classifier.js';
 export { wrapMessage } from './delivery/wrap.js';

@@ -28,6 +28,9 @@ let loadError: string | null = null;
 let corpusVectors: Float32Array[] = [];
 let benignVectors: Float32Array[] = [];
 
+/** Last embed cache so retrieval_dual_margin can reuse semantic's forward same turn. */
+let lastEmbedCache: { text: string; vec: Float32Array } | null = null;
+
 // Multilingual sentence embedder (paraphrase-multilingual-MiniLM-L12-v2, 50+
 // languages) so the attack corpus matches foreign-language attacks too — a
 // monolingual model leaves them far from the (English) corpus.
@@ -233,6 +236,24 @@ export function isEmbeddingModelAvailable(): boolean {
 }
 
 /**
+ * Shared MiniLM embed for other layers (retrieval dual-margin). Uses the same
+ * private session as semanticScan and caches the last {text, vec} so a second
+ * call the same turn does not double-forward. Returns null when model missing.
+ */
+export async function embedText(text: string): Promise<Float32Array | null> {
+  const ready = await ensureModel();
+  if (!ready) return null;
+  if (lastEmbedCache && lastEmbedCache.text === text) return lastEmbedCache.vec;
+  try {
+    const vec = await embed(text);
+    lastEmbedCache = { text, vec };
+    return vec;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Score text by its maximum cosine similarity to the attack corpus.
  * The raw similarity IS the score (0–1); fusion interprets the thresholds.
  */
@@ -243,6 +264,7 @@ export async function semanticScan(text: string): Promise<LayerResult> {
   }
   try {
     const vec = await embed(text);
+    lastEmbedCache = { text, vec };
     let attackSim = 0;
     let nearest = -1;
     for (let i = 0; i < corpusVectors.length; i++) {

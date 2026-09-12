@@ -4,10 +4,11 @@
  */
 
 import type { Classification, LayerResult, SovGuardConfig, ScanResult } from '../types.js';
-import { normalizeConfusables, normalizeStrip, normalizeToFixedPoint, regexSeverityWeight } from './regex.js';
+import { normalizeConfusables, normalizeStrip, normalizeToFixedPoint, regexSeverityWeight, shouldEscalateUnicodeSignals } from './regex.js';
 import { CODE_CATEGORIES, CODE_CONTENT_LABELS } from './code-categories.js';
 import { classifierScan } from './classifier.js';
 import { semanticScan } from './semantic.js';
+import { retrievalDualMarginScan } from './retrieval-dual-margin.js';
 import { scanPool } from './scan-pool.js';
 import { runJsLayersSync } from './js-layers.js';
 
@@ -97,6 +98,7 @@ export function combineScores(
   thresholds: { blockThreshold: number; suspiciousThreshold: number } = { blockThreshold: 0.7, suspiciousThreshold: 0.3 },
 ): number {
   // Semantic is an arbiter, not a generic max contributor — excluded from the base max.
+  // retrieval_dual_margin IS included (emit capped ≤0.45 so it cannot sole-block at 0.7).
   const maxAll = Math.min(
     layers.filter(l => l.layer !== 'semantic').reduce((max, l) => Math.max(max, l.score), 0),
     1.0,
@@ -211,6 +213,49 @@ export async function scan(text: string, config: SovGuardConfig = {}): Promise<S
         details: { ...l.details, matches: kept },
       };
     });
+  }
+
+  // DL-011 S3-v1a: retrieval dual-margin — untrusted_content only; emit ≤0.45 (never sole-block).
+  // Included in combineScores maxAll (semantic remains arbiter-only / excluded).
+  if (config.mode === 'untrusted_content') {
+    const otherMax = Math.max(
+      0,
+      ...layers
+        .filter((l) => l.layer !== 'classifier' && l.layer !== 'retrieval_dual_margin')
+        .map((l) => l.score),
+    );
+    // light_PI_cue: regex/indirect flags, boundary/decomp/delayed/unicode signals,
+    // or otherMax≥0.15 (semantic attackSim counts toward otherMax).
+    const regexLayer = layers.find((l) => l.layer === 'regex');
+    const indirectLayer = layers.find((l) => l.layer === 'indirect');
+    const flagCue =
+      (regexLayer?.flags?.length ?? 0) > 0 ||
+      (indirectLayer?.flags?.length ?? 0) > 0 ||
+      layers.some((l) =>
+        (l.flags ?? []).some(
+          (f) =>
+            f.includes('boundary') ||
+            f.startsWith('decomposition') ||
+            f === 'delayed_trigger' ||
+            f.startsWith('many_shot') ||
+            f.includes('unicode'),
+        ),
+      );
+    let unicodeCue = false;
+    try {
+      unicodeCue = shouldEscalateUnicodeSignals(normalizeToFixedPoint(input));
+    } catch {
+      unicodeCue = false;
+    }
+    const lightPiCue = otherMax >= 0.15 || flagCue || unicodeCue;
+    layers = [
+      ...layers,
+      await retrievalDualMarginScan(input, {
+        mode: config.mode,
+        otherMax,
+        lightPiCue,
+      }),
+    ];
   }
 
   const combinedScore = combineScores(layers, { blockThreshold, suspiciousThreshold });

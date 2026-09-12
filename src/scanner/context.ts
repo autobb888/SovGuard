@@ -96,7 +96,8 @@ export async function scanContext(text: string, options: ContextScanOptions): Pr
   // Provenance echo: default user for chat/research; generic `file` when mode forces untrusted without source.
   const source: SourceTrust = sourceOpt ?? (resolved.mode === 'untrusted_content' ? 'file' : 'user');
   const meta = scanModeResponseMeta(resolved);
-  const scanResult = await scan(text, config);
+  // DL-011 S3: pass resolved mode so retrieval_dual_margin can gate on untrusted_content.
+  const scanResult = await scan(text, { ...config, mode: resolved.mode });
   // DL-011c: user_chat is the FP-safe path (scrub off / never muzzle), even when
   // source is untrusted but explicit mode overrides. Source-only trust still
   // applies when mode is untrusted_content / security_research.
