@@ -22,6 +22,10 @@ export interface TrustedPlan {
   tools?: string[];
   /** URL prefixes/origins the user authorized. */
   urls?: string[];
+  /** Optional per-tool arg allowlists. Key = "toolName.argName" (dot path). */
+  argAllowlist?: Record<string, string[]>;
+  /** Fixture alias for argAllowlist (e.g. allowlist["send_email.to"]). */
+  allowlist?: Record<string, string[]>;
 }
 
 export type ProposedAction =
@@ -115,6 +119,69 @@ export function urlOnTrustedAllowlist(candidate: string, allowlist: string[]): b
  * Authorize proposed tool/URL actions against the user-origin trusted plan.
  * Untrusted sources never expand the plan — they can only be checked against it.
  */
+const EMAIL_ARGS = new Set(["to", "cc", "bcc"]);
+
+/** Merge argAllowlist + fixture alias `allowlist`. */
+export function resolveArgAllowlist(plan: TrustedPlan): Record<string, string[]> {
+  return { ...(plan.allowlist ?? {}), ...(plan.argAllowlist ?? {}) };
+}
+
+function normalizeArgValue(argName: string, raw: string): string {
+  const v = raw.trim();
+  return EMAIL_ARGS.has(argName.toLowerCase()) ? v.toLowerCase() : v;
+}
+
+/**
+ * If the plan constrains `${tool}.${arg}`, enforce exact membership.
+ * Missing/empty/non-string values fail closed when a key is present.
+ * Returns a deny reason or null if allowed.
+ */
+export function denyArgAllowlist(
+  toolName: string,
+  args: Record<string, unknown> | undefined,
+  argAllowlist: Record<string, string[]>,
+): string | null {
+  const prefix = `${toolName}.`;
+  const keys = Object.keys(argAllowlist).filter((k) => k.startsWith(prefix));
+  if (keys.length === 0) return null;
+
+  for (const key of keys) {
+    const argName = key.slice(prefix.length);
+    if (!argName || argName.includes(".")) {
+      // v1: top-level arg names only
+      continue;
+    }
+    const allowedVals = (argAllowlist[key] ?? []).map((s) => normalizeArgValue(argName, String(s)));
+    const raw = args?.[argName];
+    if (raw === undefined || raw === null) {
+      return `arg "${argName}" required by plan allowlist`;
+    }
+    if (allowedVals.length === 0) {
+      return `arg "${argName}" denied by empty plan allowlist`;
+    }
+    if (Array.isArray(raw)) {
+      for (const el of raw) {
+        if (typeof el !== "string") {
+          return `arg "${argName}" has non-string value (fail closed)`;
+        }
+        const n = normalizeArgValue(argName, el);
+        if (!allowedVals.includes(n)) {
+          return `arg "${argName}" value not on plan allowlist: ${el}`;
+        }
+      }
+      continue;
+    }
+    if (typeof raw !== "string") {
+      return `arg "${argName}" has non-string value (fail closed)`;
+    }
+    const n = normalizeArgValue(argName, raw);
+    if (!allowedVals.includes(n)) {
+      return `arg "${argName}" value not on plan allowlist: ${raw}`;
+    }
+  }
+  return null;
+}
+
 export function actionGuard(
   trustedPlan: TrustedPlan,
   proposedActions: ProposedAction[],
@@ -125,6 +192,7 @@ export function actionGuard(
     ...(trustedPlan.actions ?? []),
   ]);
   const allowedUrls = [...(trustedPlan.urls ?? [])];
+  const argAllowlist = resolveArgAllowlist(trustedPlan);
 
   // Document: untrusted content cannot expand the plan (integrator must not
   // merge tools/urls extracted from email/file into trustedPlan).
@@ -138,13 +206,18 @@ export function actionGuard(
   for (const action of proposedActions) {
     if (action.type === 'tool' || action.type === 'action') {
       const name = action.name;
-      if (allowedTools.has(name)) {
-        allowed.push(action);
-      } else {
+      if (!allowedTools.has(name)) {
         denied.push({
           action,
           reason: `tool/action "${name}" not in trusted plan`,
         });
+        continue;
+      }
+      const argDeny = denyArgAllowlist(name, action.type === 'tool' ? action.args : undefined, argAllowlist);
+      if (argDeny) {
+        denied.push({ action, reason: argDeny });
+      } else {
+        allowed.push(action);
       }
       continue;
     }

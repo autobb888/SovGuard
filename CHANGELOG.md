@@ -1,6 +1,11 @@
 ## Unreleased
 
 ### Added
+- DL-012b: TrustedPlan.argAllowlist exact-match for tool args (e.g. send_email.to)
+
+## Unreleased
+
+### Added
 - **DL-011c:** ScanMode router (`user_chat` | `untrusted_content` | `security_research`) on `/v1/scan` + `/v1/wrap` + `scanContext`. Explicit `mode` wins over `source`; `security_research` never inferred. Echo resolved mode under `meta` (`mode`, `modeSource`, optional `advisory`). Scrub stays off on `user_chat` (DL-006 held). Additive `scan_log.mode` / `scan_log.mode_source` columns + writer. See `docs/scan-mode.md`.
 
 
