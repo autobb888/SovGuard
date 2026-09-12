@@ -1,6 +1,6 @@
 {
-  "version": "v1a",
-  "baseTip": "776aa4a",
+  "version": "v1a-d1b",
+  "baseTip": "6749a45",
   "holdoutIds": [
     "deepset-542",
     "deepset-547",
@@ -31,5 +31,6 @@
     "deepset-78",
     "deepset-89"
   ],
-  "note": "ids-only; never embedded into AttackIndex"
+  "note": "ids-only; holdout originals never embedded. D1b indexes paraphrases of these ids (source=paraphrase), not the originals.",
+  "paraphraseCount": 36
 }

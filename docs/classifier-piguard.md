@@ -29,3 +29,7 @@ Download: `scripts/download-piguard-onnx.sh`. Not in npm `files[]` — self-host
 
 - Holdout 28 catch `@score≥0.3`: **10/28 (35.7%)** vs S3-v1a `faf3c7c` 6/28 (21.4%) → **+14.3 pp** (meets ≥+10). PG layer fire 9/28.
 - NI-B 41 `@user_chat`: secondary skipped 41/41 (must-not-worsen by construction). Combined score-block 41/41 is the existing PA/regex fence, not a D1 add.
+
+## D1b (2026-09-12)
+
+No combine / τ_pg / emit / RO change. AttackIndex paraphrase expand is retrieval-only; this layer's fire rule is unchanged. Holdout-28 catch@≥0.3 **24/28** (D1 was 10/28); PG fire still 9/28. Expand is not an 80% claim.

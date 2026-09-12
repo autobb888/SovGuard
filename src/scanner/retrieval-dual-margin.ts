@@ -25,6 +25,9 @@ export interface RetrievalIndexEntry {
   id: string;
   class?: string;
   text?: string;
+  /** D1b: 'paraphrase' for holdout-parent expansions (originals stay unindexed). */
+  source?: string;
+  parentHoldoutId?: string;
   /** L2-normalized 384-d MiniLM vector; null/omitted until build script fills. */
   vector?: number[] | null;
 }
