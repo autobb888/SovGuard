@@ -1,6 +1,7 @@
 ## Unreleased
 
 ### Added
+- **DL-011d D1 follow-on:** `prepareCompatTokenizer` never writes `tokenizer.compat.json` into `PIGUARD_DIR` (Docker models volume is `:ro`); reuse existing or write under `os.tmpdir()`.
 - **DL-011d D1:** `classifier_piguard` secondary layer — PIGuard ONNX under `untrusted_content` only; corroboration required; never sole-block (emit ≤0.45). Soft residual: unofficial ONNX export of leolee99/PIGuard + Node Metaspace tokenizer compat. See `docs/classifier-piguard.md`.
 - **DL-011 S3-v1a:** `retrieval_dual_margin` layer — dual-margin near-neighbor over frozen Attack/Benign indexes; `untrusted_content` only; corroboration required; never sole-block (emit ≤0.45). See `docs/retrieval-dual-margin.md`.
 - DL-012b: empty arg arrays (`to: []` / `bcc: []`) fail closed when an allowlist key is present

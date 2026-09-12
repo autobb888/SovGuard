@@ -21,7 +21,7 @@ Unofficial ONNX export of official [`leolee99/PIGuard`](https://huggingface.co/l
 | `models/piguard-onnx/model.onnx` | `5888eb0f407e06efc4aa53c715ccf869cf597c6c8687bfcd220f5e57ed749e80` |
 | official `tokenizer.json` | `5124ef2ead1a10a717703bc436de7f353da76d6340e4587719b42b1693707964` |
 
-Runtime writes `tokenizer.compat.json` (Metaspace `prepend_scheme`/`split` downgraded for the Node `tokenizers` crate). Optional HF safetensors parity spot-check is post-merge, not a gate.
+Runtime writes `tokenizer.compat.json` under `os.tmpdir()` (never into `PIGUARD_DIR` / a Docker `:ro` models volume). An existing `tokenizer.compat.json` in the model dir is reused as-is.
 
 Download: `scripts/download-piguard-onnx.sh`. Not in npm `files[]` — self-host must ship the dir or set `SOVGUARD_PIGUARD_DIR`.
 

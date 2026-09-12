@@ -14,6 +14,7 @@
 
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync, statSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { LayerResult } from '../types.js';
 import type { ScanMode } from './scan-mode.js';
@@ -71,6 +72,38 @@ function downgradeMetaspace(obj: any): void {
   else Object.values(obj).forEach(downgradeMetaspace);
 }
 
+
+/**
+ * Docker models volume is :ro. Never write tokenizer.compat.json into PIGUARD_DIR.
+ * Reuse an existing compat file; otherwise write under os.tmpdir().
+ */
+export function prepareCompatTokenizer(
+  dir: string,
+  io: {
+    existsSync?: typeof existsSync;
+    readFileSync?: typeof readFileSync;
+    writeFileSync?: typeof writeFileSync;
+    tmpdir?: () => string;
+  } = {},
+): { path: string; wrote: boolean } {
+  const exists = io.existsSync ?? existsSync;
+  const read = io.readFileSync ?? readFileSync;
+  const write = io.writeFileSync ?? writeFileSync;
+  const tmp = (io.tmpdir ?? tmpdir)();
+  const existing = join(dir, 'tokenizer.compat.json');
+  if (exists(existing)) return { path: existing, wrote: false };
+
+  const official = exists(join(dir, 'tokenizer.official.json'))
+    ? join(dir, 'tokenizer.official.json')
+    : join(dir, 'tokenizer.json');
+  const raw = JSON.parse(read(official, 'utf8'));
+  downgradeMetaspace(raw);
+  const dest = join(tmp, 'sovguard-piguard-tokenizer.compat.json');
+  if (exists(dest)) return { path: dest, wrote: false };
+  write(dest, JSON.stringify(raw));
+  return { path: dest, wrote: true };
+}
+
 async function ensureModel(): Promise<boolean> {
   if (modelLoaded) return true;
   if (loadError) return false;
@@ -86,14 +119,11 @@ async function ensureModel(): Promise<boolean> {
   }
 
   try {
-    const raw = JSON.parse(readFileSync(tokOfficial, 'utf8'));
-    downgradeMetaspace(raw);
-    const tokCompat = join(dir, 'tokenizer.compat.json');
-    writeFileSync(tokCompat, JSON.stringify(raw));
+    const compat = prepareCompatTokenizer(dir);
 
     ort = await (Function('return import("onnxruntime-node")')() as Promise<any>);
     const tokenizersModule = await (Function('return import("tokenizers")')() as Promise<any>);
-    tokenizer = await tokenizersModule.Tokenizer.fromFile(tokCompat);
+    tokenizer = await tokenizersModule.Tokenizer.fromFile(compat.path);
     tokenizer.setTruncation(512);
     tokenizer.setPadding(null);
     session = await ort.InferenceSession.create(modelPath);
