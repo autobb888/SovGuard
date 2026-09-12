@@ -160,6 +160,10 @@ export function denyArgAllowlist(
       return `arg "${argName}" denied by empty plan allowlist`;
     }
     if (Array.isArray(raw)) {
+      // RA BLOCK 09defd2: empty [] made the per-element loop a no-op (vacuous ALLOW).
+      if (raw.length === 0) {
+        return `arg "${argName}" empty array denied by plan allowlist`;
+      }
       for (const el of raw) {
         if (typeof el !== "string") {
           return `arg "${argName}" has non-string value (fail closed)`;

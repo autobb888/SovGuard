@@ -1,6 +1,7 @@
 ## Unreleased
 
 ### Added
+- DL-012b: empty arg arrays (`to: []` / `bcc: []`) fail closed when an allowlist key is present
 - DL-012b: TrustedPlan.argAllowlist exact-match for tool args (e.g. send_email.to)
 
 ## Unreleased

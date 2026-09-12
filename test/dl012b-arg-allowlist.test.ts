@@ -120,4 +120,28 @@ describe('DL-012b argAllowlist', () => {
     assert.match(r.denied[0].reason, /to/);
   });
 
+
+  it('A14 empty args.to=[] deny (RA vacuous-allow)', () => {
+    const r = run('dl012b-deny-empty-args-to');
+    assert.ok(r.denied.length >= 1);
+    assert.match(r.denied[0].reason, /to/);
+    assert.match(r.denied[0].reason, /empty array/i);
+  });
+
+  it('A14b empty args.bcc=[] deny', () => {
+    const r = run('dl012b-deny-empty-args-bcc');
+    assert.ok(r.denied.some((d) => /bcc/i.test(d.reason)));
+  });
+
+  it('A15 TS empty allowlist deny ops (dl012b-deny-empty-to-allowlist)', () => {
+    const r = run('dl012b-deny-empty-to-allowlist');
+    assert.ok(r.denied.length >= 1);
+    assert.match(r.denied[0].reason, /to/);
+  });
+
+  it('A15b TS empty allowlist deny attacker', () => {
+    const r = run('dl012b-deny-empty-to-attacker');
+    assert.ok(r.denied.length >= 1);
+  });
+
 });
