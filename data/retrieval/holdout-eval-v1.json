@@ -1,6 +1,6 @@
 {
-  "version": "v1a-d1c",
-  "baseTip": "f6a5367",
+  "version": "v1a-d1d",
+  "baseTip": "ed87a8c",
   "holdoutIds": [
     "deepset-542",
     "deepset-547",
@@ -31,8 +31,9 @@
     "deepset-78",
     "deepset-89"
   ],
-  "note": "ids-only; holdout originals never embedded. D1b paraphrases cover holdout parents. D1c refuses miss∩ holdout originals (14); tags train miss∩ (11) source=miss_intersect.",
-  "paraphraseCount": 36,
+  "note": "ids-only; holdout originals never embedded. D1d adds 29 train unique-hit paraphrases. D1b/D1c rules unchanged.",
+  "paraphraseCount": 65,
+  "uniqueHitParaphrases": 29,
   "missIntersectTagged": 11,
   "missIntersectAdded": 0
 }

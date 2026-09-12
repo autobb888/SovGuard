@@ -1,6 +1,7 @@
 ## Unreleased
 
 ### Added
+- **DL-011d D1d:** AttackIndex unique-hit train paraphrases (29). n=131. Holdout originals stay unindexed. Not an 80% claim. See `docs/retrieval-dual-margin.md`.
 - **DL-011d D1c:** AttackIndex miss∩ expand — tag train-11 `source=miss_intersect` (idempotent); refuse holdout originals (14). Not an 80% claim. See `docs/retrieval-dual-margin.md`.
 - **DL-011d D1b:** AttackIndex paraphrase expand (36 holdout-parent entries, `source=paraphrase`). Holdout originals stay unindexed. No PIGuard combine / τ / RO / escalate change. Not an 80% claim. See `docs/retrieval-dual-margin.md`.
 - **DL-011d D1 follow-on:** `prepareCompatTokenizer` never writes into `PIGUARD_DIR` (Docker `:ro`); prefer `Tokenizer.fromString`; fallback `SOVGUARD_PIGUARD_TMP` / tmpdir.

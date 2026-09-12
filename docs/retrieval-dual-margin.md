@@ -96,3 +96,21 @@ Measured on `feat/dl-011d-d1c-miss-intersect` off `f6a5367` after tagging train 
 - miss∩-25 @ `untrusted_content`: catch@>=0.3 **23/25**, retrievalHit 25/25, PG fire **0/25** (representation ceiling on residual both-miss — non-blocking).
 - NI-B 41 @ `user_chat`: ret=0 pg=0 (41/41).
 - **Not an 80% claim.** Train re-index was a no-op (already in the 66).
+
+
+## D1d unique-hit paraphrase expand (2026-09-12)
+
+Adds **29** paraphrases of D1 unique-hit **train** flats (`source=paraphrase`, parent = train sourceId). Expected n = **131** (102+29). Holdout originals still unindexed. Miss∩ PG-fire ceiling (0/25) is an unchanged soft residual.
+
+This is **not** an 80% deepset claim.
+
+
+## Holdout snapshot (D1d)
+
+Measured on `feat/dl-011d-d1d-unique-hit-para` off `ed87a8c` after adding 29 train unique-hit paraphrases (`n=131`).
+
+- Holdout-28 combined catch @ >=0.3: **24/28** (held vs D1c). retrievalHit 28/28; PG fire still **9/28**.
+- Unique-hit para-29 @ `untrusted_content`: catch@>=0.3 **24/29**, retrievalHit 29/29, PG raw>=0.5 **23/29**, PG fire **18/29**.
+- NI-B 41 @ `user_chat`: ret=0 pg=0 (41/41).
+- Miss∩ PG-fire ceiling (0/25) unchanged soft residual.
+- **Not an 80% claim.**

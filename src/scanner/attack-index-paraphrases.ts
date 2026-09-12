@@ -1,5 +1,5 @@
 /**
- * DL-011d D1b — AttackIndex paraphrase select / leakage helpers.
+ * DL-011d D1b/D1d — AttackIndex paraphrase select / leakage helpers.
  * Used by the index builder and unit tests. No model I/O.
  */
 export interface ParaFixture {
@@ -26,9 +26,8 @@ export function holdoutOriginalsInIndex(
 }
 
 /**
- * Keep paraphrases whose parent is a holdout original.
- * Skip train-parent paraphrases (would inflate train-only catch).
- * Throw if a fixture id collides with a holdout original id.
+ * Keep paraphrases whose parent is a holdout original (D1b).
+ * Skip train-parent paraphrases here (D1d has its own selector).
  */
 export function selectParaphrases(
   fixtures: ParaFixture[],
@@ -43,6 +42,29 @@ export function selectParaphrases(
       throw new Error(`paraphrase id collides with holdout original: ${f.id}`);
     }
     if (!hold.has(f.sourceId)) continue;
+    out.push(f);
+  }
+  return out;
+}
+
+/**
+ * D1d: train unique-hit paraphrases. Throws if a parent is holdout.
+ */
+export function selectTrainParaphrases(
+  fixtures: ParaFixture[],
+  trainIds: readonly string[],
+  holdoutIds: readonly string[],
+): ParaFixture[] {
+  const train = new Set(trainIds);
+  const hold = new Set(holdoutIds);
+  const out: ParaFixture[] = [];
+  for (const f of fixtures) {
+    if (f.forAttackIndex === false) continue;
+    if (!f.id || !f.text) continue;
+    if (hold.has(f.id) || hold.has(f.sourceId)) {
+      throw new Error(`D1d paraphrase collides with holdout original: ${f.id} parent=${f.sourceId}`);
+    }
+    if (!train.has(f.sourceId)) continue;
     out.push(f);
   }
   return out;

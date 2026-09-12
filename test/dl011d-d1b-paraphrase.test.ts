@@ -59,9 +59,14 @@ describe('DL-011d D1b select / leakage', () => {
     };
     assert.deepEqual(holdoutOriginalsInIndex(atk.entries, split.holdoutIds), []);
     const paras = atk.entries.filter((e) => e.source === 'paraphrase');
-    assert.equal(paras.length, 36);
-    for (const p of paras) {
+    const holdoutParas = paras.filter((e) => e.parentHoldoutId && split.holdoutIds.includes(e.parentHoldoutId));
+    assert.equal(holdoutParas.length, 36);
+    assert.ok(paras.length >= 36);
+    for (const p of holdoutParas) {
       assert.ok(p.parentHoldoutId && split.holdoutIds.includes(p.parentHoldoutId), p.id);
+      assert.ok(Array.isArray(p.vector) && p.vector.length > 0, p.id);
+    }
+    for (const p of paras) {
       assert.ok(Array.isArray(p.vector) && p.vector.length > 0, p.id);
     }
   });

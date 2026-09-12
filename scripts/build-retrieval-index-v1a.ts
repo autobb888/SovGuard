@@ -16,6 +16,7 @@ import { embedText, isEmbeddingModelAvailable } from '../src/scanner/semantic.js
 import { TAU_ATK, TAU_BEN } from '../src/scanner/retrieval-dual-margin.js';
 import {
   selectParaphrases,
+  selectTrainParaphrases,
   holdoutOriginalsInIndex,
   type ParaFixture,
 } from '../src/scanner/attack-index-paraphrases.js';
@@ -113,13 +114,10 @@ function reuseTrainVectors(trainIds: string[], existing: AttackEntry[]): AttackE
   return trainIds.map((id) => byId.get(id)!);
 }
 
-function reuseParaphrases(existing: AttackEntry[]): AttackEntry[] | null {
+function reuseParaphrases(existing: AttackEntry[]): AttackEntry[] {
   const paras = existing.filter((e) => e.source === 'paraphrase');
-  if (paras.length === 36) {
-    console.log(`[build-index] reusing ${paras.length} existing paraphrase vectors (no re-embed)`);
-    return paras;
-  }
-  return null;
+  if (paras.length) console.log(`[build-index] reusing ${paras.length} existing paraphrase vectors (no re-embed)`);
+  return paras;
 }
 
 function reuseBenign(benignIds: string[]): AttackEntry[] | null {
@@ -179,6 +177,33 @@ async function embedParaphrases(split: SplitFile): Promise<AttackEntry[]> {
       vector: Array.from(vec),
     });
     console.log(`[build-index] paraphrase ${f.id} parent=${f.sourceId}`);
+  }
+  return out;
+}
+
+
+async function embedTrainUniqueHitParas(split: SplitFile, already: AttackEntry[]): Promise<AttackEntry[]> {
+  const path = join(ROOT, 'pentest/payloads/dl011d-d1-expand-paraphrases.json');
+  if (!existsSync(path)) {
+    console.warn('[build-index] no D1d unique-hit paraphrase pack');
+    return [];
+  }
+  const pack = loadJson<{ fixtures: ParaFixture[] }>(path);
+  const picked = selectTrainParaphrases(pack.fixtures, split.trainIds, split.holdoutIds);
+  const have = new Set(already.map((e) => e.id));
+  const out: AttackEntry[] = [];
+  for (const f of picked) {
+    if (have.has(f.id)) continue;
+    const vec = await embedText(f.text);
+    if (!vec) throw new Error(`embed failed for D1d para ${f.id}`);
+    out.push({
+      id: f.id,
+      class: 'paraphrase-train-unique-hit',
+      text: f.text,
+      source: 'paraphrase',
+      vector: Array.from(vec),
+    });
+    console.log(`[build-index] D1d paraphrase ${f.id} parent=${f.sourceId}`);
   }
   return out;
 }
@@ -250,8 +275,15 @@ async function main(): Promise<void> {
   }
 
   let paraphrases = reuseParaphrases(existing);
-  if (!paraphrases) paraphrases = await embedParaphrases(split);
+  if (paraphrases.length < 36) {
+    const fresh = await embedParaphrases(split);
+    const have = new Set(paraphrases.map((e) => e.id));
+    paraphrases = [...paraphrases, ...fresh.filter((e) => !have.has(e.id))];
+  }
   attackEntries = [...attackEntries, ...paraphrases];
+  const d1d = await embedTrainUniqueHitParas(split, attackEntries);
+  attackEntries = [...attackEntries, ...d1d];
+
 
   const miss = await applyMissIntersect(split, attackEntries);
 
@@ -271,8 +303,8 @@ async function main(): Promise<void> {
   mkdirSync(OUT_DIR, { recursive: true });
 
   const attackDoc = {
-    version: 'v1a-d1c',
-    baseTip: 'f6a5367',
+    version: 'v1a-d1d',
+    baseTip: 'ed87a8c',
     model: 'paraphrase-multilingual-MiniLM-L12-v2',
     dim: attackEntries[0]?.vector.length ?? 384,
     tauAtk: TAU_ATK,
@@ -292,11 +324,12 @@ async function main(): Promise<void> {
     entries: benignEntries,
   };
   const holdoutDoc = {
-    version: 'v1a-d1c',
-    baseTip: 'f6a5367',
+    version: 'v1a-d1d',
+    baseTip: 'ed87a8c',
     holdoutIds: split.holdoutIds,
-    note: 'ids-only; holdout originals never embedded. D1b paraphrases cover holdout parents. D1c refuses miss∩ holdout originals (14); tags train miss∩ (11) source=miss_intersect.',
-    paraphraseCount: paraphrases.length,
+    note: 'ids-only; holdout originals never embedded. D1d adds 29 train unique-hit paraphrases. D1b/D1c rules unchanged.',
+    paraphraseCount: paraphrases.length + d1d.length,
+    uniqueHitParaphrases: d1d.length,
     missIntersectTagged: miss.tagged,
     missIntersectAdded: miss.added,
   };
@@ -305,7 +338,7 @@ async function main(): Promise<void> {
   writeFileSync(join(OUT_DIR, 'benign-index-v1.json'), JSON.stringify(benignDoc, null, 2) + '\n');
   writeFileSync(join(OUT_DIR, 'holdout-eval-v1.json'), JSON.stringify(holdoutDoc, null, 2) + '\n');
 
-  console.log(`[build-index] wrote ${OUT_DIR}/attack-index-v1.json (n=${attackEntries.length} train=${split.trainIds.length} para=${paraphrases.length} missTag=${miss.tagged} missAdd=${miss.added}, sha256=${attackChecksum.slice(0, 12)}…)`);
+  console.log(`[build-index] wrote ${OUT_DIR}/attack-index-v1.json (n=${attackEntries.length} train=${split.trainIds.length} para=${paraphrases.length} d1d=${d1d.length} missTag=${miss.tagged} missAdd=${miss.added}, sha256=${attackChecksum.slice(0, 12)}…)`);
   console.log(`[build-index] wrote ${OUT_DIR}/benign-index-v1.json (n=${benignEntries.length}, sha256=${benignChecksum.slice(0, 12)}…)`);
   suggestTaus(attackEntries, benignEntries);
 }

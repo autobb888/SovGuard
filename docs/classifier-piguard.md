@@ -37,3 +37,7 @@ No combine / τ_pg / emit / RO change. AttackIndex paraphrase expand is retrieva
 ## D1c (2026-09-12)
 
 No combine / τ_pg / emit / RO change. Miss∩ expand is retrieval-index only. Holdout-28 catch@≥0.3 **24/28** (held vs D1b). miss∩-25 catch 23/25, PG fire 0/25 (soft ceiling). Not an 80% claim.
+
+## D1d (2026-09-12)
+
+No combine / τ_pg / emit / RO change. Unique-hit paraphrase expand is retrieval-index only. Holdout-28 catch@≥0.3 **24/28** (held). Unique-hit para-29: catch 24/29, PG≥0.5 23/29, fire 18/29. Miss∩ PG ceiling stands. Not an 80% claim.
