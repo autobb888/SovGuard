@@ -74,9 +74,35 @@ function downgradeMetaspace(obj: any): void {
 
 
 /**
- * Docker models volume is :ro. Never write tokenizer.compat.json into PIGUARD_DIR.
- * Reuse an existing compat file; otherwise write under os.tmpdir().
+ * Docker models volume is :ro. Never write into PIGUARD_DIR.
+ * Prefer in-memory JSON (Tokenizer.fromString). Reuse a readable
+ * tokenizer.compat.json if already present. tmpdir write is fallback only.
  */
+export type CompatSource =
+  | { kind: 'file'; path: string }
+  | { kind: 'json'; json: string };
+
+export function resolveCompatTokenizer(
+  dir: string,
+  io: {
+    existsSync?: typeof existsSync;
+    readFileSync?: typeof readFileSync;
+  } = {},
+): CompatSource {
+  const exists = io.existsSync ?? existsSync;
+  const read = io.readFileSync ?? readFileSync;
+  const existing = join(dir, 'tokenizer.compat.json');
+  if (exists(existing)) return { kind: 'file', path: existing };
+
+  const official = exists(join(dir, 'tokenizer.official.json'))
+    ? join(dir, 'tokenizer.official.json')
+    : join(dir, 'tokenizer.json');
+  const raw = JSON.parse(read(official, 'utf8'));
+  downgradeMetaspace(raw);
+  return { kind: 'json', json: JSON.stringify(raw) };
+}
+
+/** @deprecated D1.10 prefers resolveCompatTokenizer + fromString (no write). */
 export function prepareCompatTokenizer(
   dir: string,
   io: {
@@ -85,23 +111,10 @@ export function prepareCompatTokenizer(
     writeFileSync?: typeof writeFileSync;
     tmpdir?: () => string;
   } = {},
-): { path: string; wrote: boolean } {
-  const exists = io.existsSync ?? existsSync;
-  const read = io.readFileSync ?? readFileSync;
-  const write = io.writeFileSync ?? writeFileSync;
-  const tmp = (io.tmpdir ?? tmpdir)();
-  const existing = join(dir, 'tokenizer.compat.json');
-  if (exists(existing)) return { path: existing, wrote: false };
-
-  const official = exists(join(dir, 'tokenizer.official.json'))
-    ? join(dir, 'tokenizer.official.json')
-    : join(dir, 'tokenizer.json');
-  const raw = JSON.parse(read(official, 'utf8'));
-  downgradeMetaspace(raw);
-  const dest = join(tmp, 'sovguard-piguard-tokenizer.compat.json');
-  if (exists(dest)) return { path: dest, wrote: false };
-  write(dest, JSON.stringify(raw));
-  return { path: dest, wrote: true };
+): { path: string | null; json?: string; wrote: boolean } {
+  const src = resolveCompatTokenizer(dir, io);
+  if (src.kind === 'file') return { path: src.path, wrote: false };
+  return { path: null, json: src.json, wrote: false };
 }
 
 async function ensureModel(): Promise<boolean> {
@@ -119,11 +132,25 @@ async function ensureModel(): Promise<boolean> {
   }
 
   try {
-    const compat = prepareCompatTokenizer(dir);
+    const src = resolveCompatTokenizer(dir);
 
     ort = await (Function('return import("onnxruntime-node")')() as Promise<any>);
     const tokenizersModule = await (Function('return import("tokenizers")')() as Promise<any>);
-    tokenizer = await tokenizersModule.Tokenizer.fromFile(compat.path);
+    if (src.kind === 'file') {
+      tokenizer = await tokenizersModule.Tokenizer.fromFile(src.path);
+    } else {
+      try {
+        tokenizer = tokenizersModule.Tokenizer.fromString(src.json);
+      } catch {
+        const sha = createHash('sha256').update(src.json).digest('hex').slice(0, 16);
+        const dest = join(
+          process.env.SOVGUARD_PIGUARD_TMP || tmpdir(),
+          `sovguard-piguard-${sha}.compat.json`,
+        );
+        if (!existsSync(dest)) writeFileSync(dest, src.json);
+        tokenizer = await tokenizersModule.Tokenizer.fromFile(dest);
+      }
+    }
     tokenizer.setTruncation(512);
     tokenizer.setPadding(null);
     session = await ort.InferenceSession.create(modelPath);
