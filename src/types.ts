@@ -51,6 +51,8 @@ export interface ScanResult {
   degraded?: boolean;
   /** Names of the layers that were unavailable/errored when degraded. */
   degradedLayers?: string[];
+  /** H1: untrusted_content corroboration floored this result to hard-block. */
+  promoted?: boolean;
 }
 
 // ─── Delivery Types ──────────────────────────────────────────────

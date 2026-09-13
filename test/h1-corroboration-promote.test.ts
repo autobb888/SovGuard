@@ -1,0 +1,111 @@
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  shouldPromoteCorroboration,
+  H1_PROMOTE_FLAG,
+} from '../src/scanner/corroboration-promote.js';
+
+const T = { blockThreshold: 0.7 };
+
+describe('H1 corroboration promote (pure rule)', () => {
+  it('promotes untrusted when PA≥0.5 and PG≥0.3', () => {
+    assert.equal(
+      shouldPromoteCorroboration({
+        mode: 'untrusted_content',
+        pa: 0.99,
+        pg: 0.45,
+        retrievalHit: false,
+        combinedScore: 0.69,
+        ...T,
+      }),
+      true,
+    );
+  });
+
+  it('promotes untrusted when PA≥0.5 and retrievalHit (PG low)', () => {
+    assert.equal(
+      shouldPromoteCorroboration({
+        mode: 'untrusted_content',
+        pa: 0.8,
+        pg: 0.1,
+        retrievalHit: true,
+        combinedScore: 0.45,
+        ...T,
+      }),
+      true,
+    );
+  });
+
+  it('never promotes on PG alone (PA < 0.5)', () => {
+    assert.equal(
+      shouldPromoteCorroboration({
+        mode: 'untrusted_content',
+        pa: 0.0,
+        pg: 0.45,
+        retrievalHit: true,
+        combinedScore: 0.45,
+        ...T,
+      }),
+      false,
+    );
+  });
+
+  it('does not apply on user_chat', () => {
+    assert.equal(
+      shouldPromoteCorroboration({
+        mode: 'user_chat',
+        pa: 0.99,
+        pg: 0.45,
+        retrievalHit: true,
+        combinedScore: 0.69,
+        ...T,
+      }),
+      false,
+    );
+  });
+
+  it('does not apply on security_research', () => {
+    assert.equal(
+      shouldPromoteCorroboration({
+        mode: 'security_research',
+        pa: 0.99,
+        pg: 0.45,
+        retrievalHit: true,
+        combinedScore: 0.69,
+        ...T,
+      }),
+      false,
+    );
+  });
+
+  it('does not apply when mode is omitted (default scan)', () => {
+    assert.equal(
+      shouldPromoteCorroboration({
+        pa: 0.99,
+        pg: 0.45,
+        retrievalHit: true,
+        combinedScore: 0.69,
+        ...T,
+      }),
+      false,
+    );
+  });
+
+  it('does not re-promote when already ≥ blockThreshold', () => {
+    assert.equal(
+      shouldPromoteCorroboration({
+        mode: 'untrusted_content',
+        pa: 0.99,
+        pg: 0.45,
+        retrievalHit: true,
+        combinedScore: 0.7,
+        ...T,
+      }),
+      false,
+    );
+  });
+
+  it('flag constant is corroboration_promote', () => {
+    assert.equal(H1_PROMOTE_FLAG, 'corroboration_promote');
+  });
+});

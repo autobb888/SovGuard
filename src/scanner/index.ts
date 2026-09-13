@@ -12,6 +12,7 @@ import { retrievalDualMarginScan } from './retrieval-dual-margin.js';
 import { piguardScan } from './classifier-piguard.js';
 import { scanPool } from './scan-pool.js';
 import { runJsLayersSync } from './js-layers.js';
+import { H1_PROMOTE_FLAG, shouldPromoteCorroboration, layerScore, retrievalHitFromLayers } from './corroboration-promote.js';
 
 /**
  * Detect degraded coverage: a layer that actually ran but reported itself
@@ -279,13 +280,35 @@ export async function scan(text: string, config: SovGuardConfig = {}): Promise<S
     ];
   }
 
-  const combinedScore = combineScores(layers, { blockThreshold, suspiciousThreshold });
+  let combinedScore = combineScores(layers, { blockThreshold, suspiciousThreshold });
   const allFlags = layers.flatMap((l) => l.flags).filter((f) => !f.endsWith('_unavailable'));
 
   let classification: Classification;
   if (combinedScore >= blockThreshold) classification = 'likely_injection';
   else if (combinedScore >= suspiciousThreshold) classification = 'suspicious';
   else classification = 'safe';
+
+  // H1: untrusted_content only. PA>=0.5 and (PG>=0.3 or retrievalHit) -> hard-block.
+  // Never PG sole-block; never user_chat / security_research / default.
+  let promoted = false;
+  const pa = layerScore(layers, 'classifier');
+  const pg = layerScore(layers, 'classifier_piguard');
+  const retrievalHit = retrievalHitFromLayers(layers);
+  if (
+    shouldPromoteCorroboration({
+      mode: config.mode,
+      pa,
+      pg,
+      retrievalHit,
+      combinedScore,
+      blockThreshold,
+    })
+  ) {
+    promoted = true;
+    combinedScore = blockThreshold;
+    classification = 'likely_injection';
+    allFlags.push(H1_PROMOTE_FLAG);
+  }
 
   const { degraded, degradedLayers } = detectDegradation(layers);
 
@@ -298,6 +321,7 @@ export async function scan(text: string, config: SovGuardConfig = {}): Promise<S
     scannedAt: Date.now(),
     degraded,
     degradedLayers,
+    promoted,
   };
 }
 
