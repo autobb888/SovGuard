@@ -37,16 +37,16 @@ const poisonedSendEmail: ToolSchema = {
 };
 
 describe('DL-005 poisoned docstring', () => {
-  it('blocks or quarantines tool schema with injection in description/args', () => {
-    const res = scanToolSchema(poisonedSendEmail);
+  it('blocks or quarantines tool schema with injection in description/args', async () => {
+    const res = await scanToolSchema(poisonedSendEmail);
     assert.ok(res.classification !== 'safe', `expected non-safe, got ${res.classification} score=${res.score}`);
     assert.ok(res.action === 'block' || res.action === 'quarantine');
     assert.ok(res.flags.includes('poisoned_docstring'));
     assert.ok(res.schemaHash.length === 64);
   });
 
-  it('allows benign tool docs', () => {
-    const res = scanToolSchema(benignAdd);
+  it('allows benign tool docs', async () => {
+    const res = await scanToolSchema(benignAdd);
     assert.equal(res.classification, 'safe');
     assert.equal(res.action, 'allow');
   });
@@ -119,9 +119,9 @@ describe('DL-005 Threat Scout fixtures', () => {
   };
   const byId = Object.fromEntries(raw.fixtures.map((f) => [f.id as string, f]));
 
-  it('dl005-poisoned-docstring (IMPORTANT + ~/.ssh sidenote) → block|quarantine', () => {
+  it('dl005-poisoned-docstring (IMPORTANT + ~/.ssh sidenote) → block|quarantine', async () => {
     const f = byId['dl005-poisoned-docstring'];
-    const res = scanToolSchema(f.schema as ToolSchema);
+    const res = await scanToolSchema(f.schema as ToolSchema);
     assert.ok(res.classification !== 'safe', `got ${res.classification} score=${res.score} flags=${res.flags}`);
     assert.ok(res.action === 'block' || res.action === 'quarantine');
   });
@@ -160,16 +160,16 @@ describe('DL-005 Threat Scout fixtures', () => {
     assert.ok(result.quarantined.some((q) => q.tool.serverId === 'mail-malware'));
   });
 
-  it('dl005-benign-control allows', () => {
+  it('dl005-benign-control allows', async () => {
     const f = byId['dl005-benign-control'];
-    const res = scanToolSchema(f.schema as ToolSchema);
+    const res = await scanToolSchema(f.schema as ToolSchema);
     assert.equal(res.action, 'allow');
     assert.equal(res.classification, 'safe');
   });
 
-  it('dl005-unicode-in-schema catches Tags-encoded instruction', () => {
+  it('dl005-unicode-in-schema catches Tags-encoded instruction', async () => {
     const f = byId['dl005-unicode-in-schema'];
-    const res = scanToolSchema(f.schema as ToolSchema);
+    const res = await scanToolSchema(f.schema as ToolSchema);
     const unicodeHit = res.flags.some((x) => x.includes('unicode') || x.includes('unicode_tag') || x.includes('stego'));
     assert.ok(
       res.classification !== 'safe' || unicodeHit,
@@ -179,7 +179,7 @@ describe('DL-005 Threat Scout fixtures', () => {
 });
 
 describe('DL-005 RA PoC annotations integrity', () => {
-  it('consent then annotate ignore-previous → rug_pull and/or non-safe scan', () => {
+  it('consent then annotate ignore-previous → rug_pull and/or non-safe scan', async () => {
     const benign: ToolSchema = {
       name: 'add',
       description: 'Adds two numbers and returns the sum.',
@@ -193,7 +193,7 @@ describe('DL-005 RA PoC annotations integrity', () => {
     };
     const store = new SchemaConsentStore();
     const consented = store.record('calc', benign);
-    assert.equal(scanToolSchema(benign).classification, 'safe');
+    assert.equal((await scanToolSchema(benign)).classification, 'safe');
 
     const mutated: ToolSchema = {
       ...benign,
@@ -207,7 +207,7 @@ describe('DL-005 RA PoC annotations integrity', () => {
     assert.equal(check.rugPull, true);
     assert.equal(check.ok, false);
 
-    const scanned = scanToolSchema(mutated);
+    const scanned = await scanToolSchema(mutated);
     assert.ok(
       scanned.classification !== 'safe' || check.rugPull,
       `expected non-safe scan or rug_pull; classification=${scanned.classification}`,
@@ -217,7 +217,7 @@ describe('DL-005 RA PoC annotations integrity', () => {
 });
 
 describe('DL-005 _meta integrity', () => {
-  it('consent then poison _meta → rug_pull and non-safe scan', () => {
+  it('consent then poison _meta → rug_pull and non-safe scan', async () => {
     const benign: ToolSchema = {
       name: 'lookup',
       description: 'Looks up a record by id.',
@@ -234,6 +234,6 @@ describe('DL-005 _meta integrity', () => {
       },
     };
     assert.equal(checkSchemaConsent(consented, mutated).rugPull, true);
-    assert.ok(scanToolSchema(mutated).classification !== 'safe');
+    assert.ok((await scanToolSchema(mutated)).classification !== 'safe');
   });
 });

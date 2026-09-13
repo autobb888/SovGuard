@@ -9,7 +9,7 @@
 import { createHash } from 'node:crypto';
 import type { Classification, LayerResult } from '../types.js';
 import { runJsLayersSync } from './js-layers.js';
-import { combineScores } from './index.js';
+import { combineScores, scan } from './index.js';
 import { scrubUntrustedIngress } from './boundary-scrub.js';
 
 /** Keys included in schemaHash + doc scan (MCP-relevant display/behavior). */
@@ -180,15 +180,44 @@ function classifyFromScore(score: number): Classification {
  * Scan a tool schema: description/arg docs/title/annotations are untrusted.
  * DL-006b: scrub → Unicode fixed-point → scrub (scrubUntrustedIngress) so
  * Tags/ZW/fullwidth cannot reconstitute boundary tokens in schema text.
+ *
+ * KPI-C: after scrub, also run full inbound scan() under mode untrusted_content
+ * (DeBERTa + JS + retrieval + PIGuard) in addition to existing JS layers.
+ * Combine with max(jsScore, full.score) so action is never weaker than today.
+ * If full scan is unavailable/throws, fail toward the JS-only result.
  */
-export function scanToolSchema(
+export async function scanToolSchema(
   schema: ToolSchema,
   opts?: { enablePerplexity?: boolean },
-): ToolSchemaScanResult {
+): Promise<ToolSchemaScanResult> {
   const scrubbed = scrubUntrustedIngress(collectSchemaDocs(schema) || schema.name);
   const textScanned = scrubbed.text;
-  const layers = runJsLayersSync(textScanned, opts?.enablePerplexity === true);
-  const score = combineScores(layers);
+  const jsLayers = runJsLayersSync(textScanned, opts?.enablePerplexity === true);
+  const jsScore = combineScores(jsLayers);
+
+  let layers: LayerResult[] = jsLayers;
+  let score = jsScore;
+
+  try {
+    const full = await scan(textScanned, {
+      mode: 'untrusted_content',
+      enablePerplexity: opts?.enablePerplexity,
+    });
+    // Merge layers by name, keeping the higher-scoring instance.
+    const byName = new Map<string, LayerResult>();
+    for (const l of [...jsLayers, ...full.layers]) {
+      const prev = byName.get(l.layer);
+      if (!prev || l.score > prev.score) byName.set(l.layer, l);
+    }
+    layers = [...byName.values()];
+    // At least as strict as JS-only; prefer full inbound when stronger.
+    score = Math.max(jsScore, full.score);
+  } catch {
+    // Degraded / unavailable full path → keep existing JS-only result.
+    layers = jsLayers;
+    score = jsScore;
+  }
+
   const classification = classifyFromScore(score);
 
   const flags: string[] = [];
