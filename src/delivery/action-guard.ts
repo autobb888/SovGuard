@@ -247,12 +247,23 @@ export function extractRemoteUrls(text: string): string[] {
     /!\[[^\]]*\]\(\s*(https?:\/\/[^)\s]+)\s*\)/gi,
     /\[[^\]]*\]:\s*(https?:\/\/\S+)/gi,
     /<img\b[^>]*\bsrc\s*=\s*["']?(https?:\/\/[^"'\s>]+)/gi,
+    /<a\b[^>]*\bhref\s*=\s*["']?(https?:\/\/[^"'\s>]+)/gi,
+    /<link\b[^>]*\bhref\s*=\s*["']?(https?:\/\/[^"'\s>]+)/gi,
+    /url\(\s*['"]?(https?:\/\/[^'")\s]+)/gi,
   ];
   for (const re of patterns) {
     let m: RegExpExecArray | null;
     while ((m = re.exec(text)) !== null) {
       urls.push(m[1]);
     }
+  }
+  const metaRe = /<meta\b[^>]*>/gi;
+  let mm: RegExpExecArray | null;
+  while ((mm = metaRe.exec(text)) !== null) {
+    const tag = mm[0];
+    if (!/http-equiv\s*=\s*["']?refresh\b/i.test(tag)) continue;
+    const um = /url\s*=\s*["']?(https?:\/\/[^"'\s>;]+)/i.exec(tag);
+    if (um) urls.push(um[1]);
   }
   return [...new Set(urls)];
 }
