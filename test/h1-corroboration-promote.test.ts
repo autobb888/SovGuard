@@ -4,9 +4,11 @@ import {
   shouldPromoteCorroboration,
   shouldPromoteH2j,
   shouldPromoteH2e,
+  shouldPromoteH3c,
   H1_PROMOTE_FLAG,
   H2J_PROMOTE_FLAG,
   H2E_PROMOTE_FLAG,
+  H3C_PROMOTE_FLAG,
 } from '../src/scanner/corroboration-promote.js';
 
 const T = { blockThreshold: 0.7 };
@@ -311,5 +313,88 @@ describe('H2e ret∧(PG∨sem) promote (pure rule)', () => {
 
   it('flag constant is h2e_ret_pg_sem_promote', () => {
     assert.equal(H2E_PROMOTE_FLAG, 'h2e_ret_pg_sem_promote');
+  });
+});
+
+describe('H3c PG∧sem promote (pure rule)', () => {
+  it('promotes untrusted when PG≥0.3 and sem≥0.22', () => {
+    assert.equal(
+      shouldPromoteH3c({
+        mode: 'untrusted_content',
+        pg: 0.45,
+        sem: 0.22,
+        combinedScore: 0.45,
+        ...T,
+      }),
+      true,
+    );
+  });
+
+  it('never promotes on PG alone (sem below 0.22)', () => {
+    assert.equal(
+      shouldPromoteH3c({
+        mode: 'untrusted_content',
+        pg: 0.45,
+        sem: 0.21,
+        combinedScore: 0.45,
+        ...T,
+      }),
+      false,
+    );
+  });
+
+  it('never promotes on sem alone (PG low)', () => {
+    assert.equal(
+      shouldPromoteH3c({
+        mode: 'untrusted_content',
+        pg: 0.1,
+        sem: 0.45,
+        combinedScore: 0.45,
+        ...T,
+      }),
+      false,
+    );
+  });
+
+  it('does not apply on user_chat', () => {
+    assert.equal(
+      shouldPromoteH3c({
+        mode: 'user_chat',
+        pg: 0.45,
+        sem: 0.45,
+        combinedScore: 0.45,
+        ...T,
+      }),
+      false,
+    );
+  });
+
+  it('does not apply when mode is omitted', () => {
+    assert.equal(
+      shouldPromoteH3c({
+        pg: 0.45,
+        sem: 0.45,
+        combinedScore: 0.45,
+        ...T,
+      }),
+      false,
+    );
+  });
+
+  it('does not re-promote when already ≥ blockThreshold', () => {
+    assert.equal(
+      shouldPromoteH3c({
+        mode: 'untrusted_content',
+        pg: 0.45,
+        sem: 0.45,
+        combinedScore: 0.7,
+        ...T,
+      }),
+      false,
+    );
+  });
+
+  it('flag constant is h3c_pg_sem_promote', () => {
+    assert.equal(H3C_PROMOTE_FLAG, 'h3c_pg_sem_promote');
   });
 });

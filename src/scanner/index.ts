@@ -12,7 +12,7 @@ import { retrievalDualMarginScan } from './retrieval-dual-margin.js';
 import { piguardScan } from './classifier-piguard.js';
 import { scanPool } from './scan-pool.js';
 import { runJsLayersSync } from './js-layers.js';
-import { H1_PROMOTE_FLAG, H2J_PROMOTE_FLAG, H2E_PROMOTE_FLAG, shouldPromoteCorroboration, shouldPromoteH2j, shouldPromoteH2e, layerScore, retrievalHitFromLayers } from './corroboration-promote.js';
+import { H1_PROMOTE_FLAG, H2J_PROMOTE_FLAG, H2E_PROMOTE_FLAG, H3C_PROMOTE_FLAG, shouldPromoteCorroboration, shouldPromoteH2j, shouldPromoteH2e, shouldPromoteH3c, layerScore, retrievalHitFromLayers } from './corroboration-promote.js';
 
 /**
  * Detect degraded coverage: a layer that actually ran but reported itself
@@ -318,13 +318,21 @@ export async function scan(text: string, config: SovGuardConfig = {}): Promise<S
     combinedScore,
     blockThreshold,
   });
-  if (h1 || h2j || h2e) {
+  const h3c = shouldPromoteH3c({
+    mode: config.mode,
+    pg,
+    sem,
+    combinedScore,
+    blockThreshold,
+  });
+  if (h1 || h2j || h2e || h3c) {
     promoted = true;
     combinedScore = blockThreshold;
     classification = 'likely_injection';
     if (h1) allFlags.push(H1_PROMOTE_FLAG);
     if (h2j) allFlags.push(H2J_PROMOTE_FLAG);
     if (h2e) allFlags.push(H2E_PROMOTE_FLAG);
+    if (h3c) allFlags.push(H3C_PROMOTE_FLAG);
   }
 
   const { degraded, degradedLayers } = detectDegradation(layers);

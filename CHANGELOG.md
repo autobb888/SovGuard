@@ -1,6 +1,7 @@
 ## Unreleased
 
 ### Added
+- **H3c:** Untrusted-only promote when PG≥0.3 ∧ sem≥0.22 → hard-block (`h3c_pg_sem_promote`). Never PG-alone; never `user_chat` / `security_research` / default. Stacks H1+H2j+H2e. Floors score to τ_block 0.7. Disclose weak sem floor 0.22. Not an 80% claim until measured land proof ≥210/263.
 - **H2e:** Untrusted-only stretch promote when retrievalHit ∧ (PG≥0.3 ∨ sem≥0.3) → hard-block (`h2e_ret_pg_sem_promote`). Never PG-alone; never `user_chat` / `security_research` / default. Stacks H1+H2j. Floors score to τ_block 0.7. Sim ~69.6% HB; disclosed deepset FB +3. Not an 80% claim.
 - **H2j:** Untrusted-only promote when PG≥0.3 ∧ retrievalHit → hard-block (`h2j_pg_retrieval_promote`). Never PG-alone; never `user_chat` / `security_research` / default. Stacks with H1. Floors score to τ_block 0.7. Not an 80% claim.
 - **H1:** Corroboration → hard-block under `untrusted_content` only: PA≥0.5 ∧ (PG≥0.3 ∨ retrievalHit). retrievalHit is `retrieval_dual_margin` layer score ≥0.3. Never PG sole-block; never `user_chat` / `security_research` / default. Emits `promoted` + flag `corroboration_promote`; floors score to τ_block 0.7. Not an 80% block claim.
