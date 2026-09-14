@@ -3,8 +3,10 @@ import assert from 'node:assert/strict';
 import {
   shouldPromoteCorroboration,
   shouldPromoteH2j,
+  shouldPromoteH2e,
   H1_PROMOTE_FLAG,
   H2J_PROMOTE_FLAG,
+  H2E_PROMOTE_FLAG,
 } from '../src/scanner/corroboration-promote.js';
 
 const T = { blockThreshold: 0.7 };
@@ -192,5 +194,122 @@ describe('H2j PG∧retrieval promote (pure rule)', () => {
 
   it('flag constant is h2j_pg_retrieval_promote', () => {
     assert.equal(H2J_PROMOTE_FLAG, 'h2j_pg_retrieval_promote');
+  });
+});
+
+describe('H2e ret∧(PG∨sem) promote (pure rule)', () => {
+  it('promotes untrusted when retrievalHit and PG≥0.3 (sem low)', () => {
+    assert.equal(
+      shouldPromoteH2e({
+        mode: 'untrusted_content',
+        pg: 0.45,
+        sem: 0.1,
+        retrievalHit: true,
+        combinedScore: 0.45,
+        ...T,
+      }),
+      true,
+    );
+  });
+
+  it('promotes untrusted when retrievalHit and sem≥0.3 (PG low)', () => {
+    assert.equal(
+      shouldPromoteH2e({
+        mode: 'untrusted_content',
+        pg: 0.1,
+        sem: 0.45,
+        retrievalHit: true,
+        combinedScore: 0.45,
+        ...T,
+      }),
+      true,
+    );
+  });
+
+  it('never promotes on retrievalHit alone (PG and sem low)', () => {
+    assert.equal(
+      shouldPromoteH2e({
+        mode: 'untrusted_content',
+        pg: 0.1,
+        sem: 0.1,
+        retrievalHit: true,
+        combinedScore: 0.45,
+        ...T,
+      }),
+      false,
+    );
+  });
+
+  it('never promotes on PG+sem without retrievalHit', () => {
+    assert.equal(
+      shouldPromoteH2e({
+        mode: 'untrusted_content',
+        pg: 0.45,
+        sem: 0.45,
+        retrievalHit: false,
+        combinedScore: 0.45,
+        ...T,
+      }),
+      false,
+    );
+  });
+
+  it('never promotes on PG alone (no retrieval)', () => {
+    assert.equal(
+      shouldPromoteH2e({
+        mode: 'untrusted_content',
+        pg: 0.45,
+        sem: 0.0,
+        retrievalHit: false,
+        combinedScore: 0.45,
+        ...T,
+      }),
+      false,
+    );
+  });
+
+  it('does not apply on user_chat', () => {
+    assert.equal(
+      shouldPromoteH2e({
+        mode: 'user_chat',
+        pg: 0.45,
+        sem: 0.45,
+        retrievalHit: true,
+        combinedScore: 0.45,
+        ...T,
+      }),
+      false,
+    );
+  });
+
+  it('does not apply when mode is omitted', () => {
+    assert.equal(
+      shouldPromoteH2e({
+        pg: 0.45,
+        sem: 0.45,
+        retrievalHit: true,
+        combinedScore: 0.45,
+        ...T,
+      }),
+      false,
+    );
+  });
+
+  it('does not re-promote when already ≥ blockThreshold', () => {
+    assert.equal(
+      shouldPromoteH2e({
+        mode: 'untrusted_content',
+        pg: 0.45,
+        sem: 0.45,
+        retrievalHit: true,
+        combinedScore: 0.7,
+        ...T,
+      }),
+      false,
+    );
+  });
+
+  it('flag constant is h2e_ret_pg_sem_promote', () => {
+    assert.equal(H2E_PROMOTE_FLAG, 'h2e_ret_pg_sem_promote');
   });
 });
