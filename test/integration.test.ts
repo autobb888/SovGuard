@@ -77,7 +77,7 @@ describe('E2E Pipeline', () => {
     it('should flag SSN in agent output', async () => {
       const result = await engine.scanOutput(
         'The customer SSN is 123-45-6789, please verify.',
-        { jobId: 'job-1' },
+        { jobId: 'job-1', dataProtection: true },
       );
       assert.equal(result.safe, false, 'Output with SSN should not be safe');
       assert.ok(result.flags.length > 0, 'Expected PII flags');
@@ -90,7 +90,7 @@ describe('E2E Pipeline', () => {
     it('should flag credit card numbers', async () => {
       const result = await engine.scanOutput(
         'Your card number is 4111 1111 1111 1111.',
-        { jobId: 'job-2' },
+        { jobId: 'job-2', dataProtection: true },
       );
       assert.ok(
         result.flags.some(f => f.type === 'pii_detected'),

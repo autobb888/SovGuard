@@ -59,14 +59,15 @@ export function scanOutput(
       action: 'block' as const,
     }));
 
+  const dataProtection = context.dataProtection === true;
   const allFlags: OutputFlag[] = [
-    ...scanPII(message, context.jobCategory),
+    ...(dataProtection ? scanPII(message, context.jobCategory) : []),
     ...scanURLs(message),
     ...scanExfil(message, { allowedUrls: context.allowedUrls }),
     ...echoHits,
-    ...scanSecrets(message),
+    ...(dataProtection ? scanSecrets(message) : []),
     ...scanCode(message, context.jobCategory),
-    ...scanFinancial(message, context.whitelistedAddresses),
+    ...(dataProtection ? scanFinancial(message, context.whitelistedAddresses) : []),
     ...scanContamination(message, context.jobId, context.jobFingerprints),
     ...scanToxicity(message),
     ...scanEgress(message, { canaryToken: context.canaryToken }),

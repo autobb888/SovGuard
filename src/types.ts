@@ -140,6 +140,12 @@ export interface OutputScanContext {
   allowedUrls?: string[];
   /** DL-004: URLs introduced only by untrusted ingress (email/file/web/…). */
   untrustedIntroducedUrls?: string[];
+  /**
+   * Opt-in data-protection wrapper. Default OFF.
+   * When true, run existing scanPII / scanSecrets / scanFinancial.
+   * When omitted/false, skip those three only — injection/act-DENY/canary/egress stay.
+   */
+  dataProtection?: boolean;
 }
 
 export interface OutputScanResult {

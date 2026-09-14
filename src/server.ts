@@ -172,6 +172,7 @@ app.post('/v1/scan/output', async (req) => {
     jobFingerprints: body.jobFingerprints && body.jobFingerprints.length > 0
       ? new Map([[`other:${randomUUID()}`, new Set(body.jobFingerprints.map((id) => hashId(id)))]])
       : undefined,
+    dataProtection: body.dataProtection === true,
   };
   const result = await engine.scanOutput(body.text, context);
   return annotateVerdict(result, enforcementMode, 0.6);

@@ -308,6 +308,7 @@ describe('Combined Output Scanner', () => {
   it('blocks SSN leaks', async () => {
     const result = await scanOutput('Your SSN is 123-45-6789', {
       jobId: 'job-1',
+      dataProtection: true,
     });
     assert.equal(result.safe, false);
     assert.equal(result.classification, 'blocked');
@@ -318,6 +319,7 @@ describe('Combined Output Scanner', () => {
     const result = await scanOutput('Contact user@example.com for help', {
       jobId: 'job-1',
       jobCategory: 'design',
+      dataProtection: true,
     });
     assert.equal(result.classification, 'warning');
   });
@@ -326,6 +328,7 @@ describe('Combined Output Scanner', () => {
     const result = await scanOutput('Contact user@example.com for help', {
       jobId: 'job-1',
       jobCategory: 'code-review',
+      dataProtection: true,
     });
     // Low severity warn → still flags but lower score
     assert.ok(result.score < 0.5);
@@ -334,7 +337,7 @@ describe('Combined Output Scanner', () => {
   it('combines multiple flags, max score wins', async () => {
     const result = await scanOutput(
       'SSN: 123-45-6789 and visit http://192.168.1.1/admin',
-      { jobId: 'job-1' },
+      { jobId: 'job-1', dataProtection: true },
     );
     assert.equal(result.classification, 'blocked');
     assert.ok(result.flags.length >= 2);

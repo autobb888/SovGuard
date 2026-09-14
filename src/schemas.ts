@@ -87,6 +87,8 @@ export const ScanOutputBody = z.object({
   canaryToken: z.string().min(1).max(256).optional(),
   /** C3: identifiers from OTHER jobs that must not appear in this output (cross-contamination). */
   jobFingerprints: z.array(z.string().max(512)).max(50).optional(),
+  /** Opt-in data protection: run existing PII/secrets/financial scanners. Default off. */
+  dataProtection: z.boolean().optional(),
 });
 
 export const ScanReportBody = z.object({

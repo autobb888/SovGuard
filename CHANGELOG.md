@@ -1,6 +1,7 @@
 ## Unreleased
 
 ### Added
+- **Opt-in data protection:** `OutputScanContext.dataProtection` (default off). When true, existing `scanPII` / `scanSecrets` / `scanFinancial` run on `scanOutput`. When off, those three skip; canary/egress/exfil/AG unchanged. Not a new DLP product. No inbound HB change.
 - **H3c:** Untrusted-only promote when PG≥0.3 ∧ sem≥0.22 → hard-block (`h3c_pg_sem_promote`). Never PG-alone; never `user_chat` / `security_research` / default. Stacks H1+H2j+H2e. Floors score to τ_block 0.7. Disclose weak sem floor 0.22. Not an 80% claim until measured land proof ≥210/263.
 - **KPI-C:** Expand `extractRemoteUrls` to HTML `<a href>`, CSS `url()`, `<link href>` (incl. preload), and `<meta http-equiv=refresh>`. Existing markdown-image + `<img src>` unchanged. Egress/canary only; 0% deepset. Not an 80% claim.
 - **H2e:** Untrusted-only stretch promote when retrievalHit ∧ (PG≥0.3 ∨ sem≥0.3) → hard-block (`h2e_ret_pg_sem_promote`). Never PG-alone; never `user_chat` / `security_research` / default. Stacks H1+H2j. Floors score to τ_block 0.7. Sim ~69.6% HB; disclosed deepset FB +3. Not an 80% claim.
