@@ -230,6 +230,7 @@ export {
   checkSchemaConsent,
   resolveToolShadowing,
   SchemaConsentStore,
+  assertContinuousSchemaIntegrity,
 } from './scanner/tool-schema.js';
 export type {
   ToolSchema,
@@ -239,6 +240,8 @@ export type {
   RugPullCheck,
   RegisteredTool,
   ShadowingResult,
+  ContinuousSchemaIntegrityResult,
+  ContinuousSchemaToolResult,
 } from './scanner/tool-schema.js';
 
 export { scrubBoundaries, scrubUntrustedIngress, neutralizeBoundaryToken, hasRawBoundaryToken, DEFAULT_BOUNDARY_PATTERNS } from './scanner/boundary-scrub.js';

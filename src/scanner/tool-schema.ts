@@ -360,3 +360,71 @@ export class SchemaConsentStore {
     this.store.clear();
   }
 }
+
+
+/** Per-tool result from continuous tools/list integrity check. */
+export interface ContinuousSchemaToolResult {
+  toolName: string;
+  verify: RugPullCheck & { consented: boolean };
+  /** Present when rugPull or not consented — never auto-records consent. */
+  scan?: ToolSchemaScanResult;
+}
+
+export interface ContinuousSchemaIntegrityResult {
+  ok: boolean;
+  /** True if any consented tool's schemaHash drifted (rug_pull). */
+  rugPull: boolean;
+  /** True when host must re-approve before trusting this list. */
+  reapprovalRequired: boolean;
+  /**
+   * When rugPull: subsequent proposed acts from this MCP must be treated as
+   * untrusted (ActionGuard source mcp_result). Never silent consent refresh.
+   */
+  markActsUntrusted: boolean;
+  /** Suggested ActionGuard source after drift. */
+  actionGuardSource: 'mcp_result';
+  tools: ContinuousSchemaToolResult[];
+}
+
+/**
+ * Deadbugz continuous tools/list integrity.
+ * Call on every tools/list and listChanged with the live schema set.
+ * Reuses SchemaConsentStore.verify + scanToolSchema. Never silently refreshes consent.
+ */
+export async function assertContinuousSchemaIntegrity(
+  store: SchemaConsentStore,
+  serverId: string,
+  schemas: ToolSchema[],
+  opts?: { enablePerplexity?: boolean },
+): Promise<ContinuousSchemaIntegrityResult> {
+  const tools: ContinuousSchemaToolResult[] = [];
+  let rugPull = false;
+  let reapprovalRequired = false;
+
+  for (const schema of schemas) {
+    const verify = store.verify(serverId, schema);
+    const entry: ContinuousSchemaToolResult = { toolName: schema.name, verify };
+
+    if (verify.rugPull) {
+      rugPull = true;
+      reapprovalRequired = true;
+      entry.scan = await scanToolSchema(schema, opts);
+    } else if (!verify.consented) {
+      // Not yet consented — require approval; scan docs but do not auto-record.
+      reapprovalRequired = true;
+      entry.scan = await scanToolSchema(schema, opts);
+    }
+
+    tools.push(entry);
+  }
+
+  const ok = !rugPull && !reapprovalRequired && tools.every((t) => t.verify.ok);
+  return {
+    ok,
+    rugPull,
+    reapprovalRequired,
+    markActsUntrusted: rugPull,
+    actionGuardSource: 'mcp_result',
+    tools,
+  };
+}
