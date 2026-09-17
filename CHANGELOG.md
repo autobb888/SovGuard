@@ -1,6 +1,7 @@
 ## Unreleased
 
 ### Added
+- **CPE role-attr guard:** When wrap `source` is untrusted (ScanMode UNTRUSTED_SOURCES / fail-closed unknown), ignore forged privileged `role` (`system` / `developer` / `assistant` / any elevation claim) and force `untrusted:${source}`. Reuses provenance + ActionGuard — not deepset / not CoRA. No session sticky. See DL-011 CPE role-attr acceptance.
 - **Deadbugz / KPI-C MCP:** Continuous `tools/list` / `listChanged` integrity via `assertContinuousSchemaIntegrity` — verify `schemaHash` every refresh; rug_pull requires re-approval (never silent consent refresh); scan poisoned docs; mark post-drift acts untrusted for ActionGuard. Reuses hashToolSchema + SchemaConsentStore + scanToolSchema. Not an IOC product; not deepset.
 - **Opt-in data protection:** `OutputScanContext.dataProtection` (default off). When true, existing `scanPII` / `scanSecrets` / `scanFinancial` run on `scanOutput`. When off, those three skip; canary/egress/exfil/AG unchanged. Not a new DLP product. No inbound HB change.
 - **H3c:** Untrusted-only promote when PG≥0.3 ∧ sem≥0.22 → hard-block (`h3c_pg_sem_promote`). Never PG-alone; never `user_chat` / `security_research` / default. Stacks H1+H2j+H2e. Floors score to τ_block 0.7. Disclose weak sem floor 0.22. Not an 80% claim until measured land proof ≥210/263.

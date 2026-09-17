@@ -8,6 +8,7 @@ import type { SourceTrust, TaintAction, TaintNotification, TaintPolicy } from '.
 import {
   resolveScanMode,
   scanModeResponseMeta,
+  isUntrustedSource,
   type ScanMode,
   type ScanModeMeta,
 } from './scanner/scan-mode.js';
@@ -146,8 +147,15 @@ export async function handleWrapRoute(
     canary = getToken(body.sessionId) ?? engine.createCanary(body.sessionId);
   }
 
+  // CPE role-attr guard: untrusted provenance cannot elevate Spotlight role.
+  // Ignore forged system/developer/assistant (or any other elevation claim).
+  const wrapRole =
+    body.source && isUntrustedSource(body.source)
+      ? `untrusted:${body.source}`
+      : body.role;
+
   const wrapped = engine.wrap(textForWrap, scan, {
-    role: body.role ?? (body.source && body.source !== 'user' ? `untrusted:${body.source}` : undefined),
+    role: wrapRole,
     jobId: body.jobId,
     sessionId: body.sessionId,
     canaryToken: canary?.token,

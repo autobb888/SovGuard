@@ -45,6 +45,19 @@ export function isScanMode(value: unknown): value is ScanMode {
 }
 
 /**
+ * Provenance that must not elevate Spotlight/wrap role (CPE role-attr guard).
+ * Named UNTRUSTED_SOURCES plus unknown non-user strings fail closed — same
+ * posture as resolveScanMode (never treat as trusted user).
+ */
+export function isUntrustedSource(source: string | null | undefined): boolean {
+  if (source == null || source === '' || source === 'user') return false;
+  // Non-user provenance is untrusted for wrap role (named set + unknown fail closed;
+  // mirrors resolveScanMode → untrusted_content). UNTRUSTED_SOURCES lives above.
+  return true;
+}
+
+
+/**
  * Resolve product ScanMode from optional explicit mode + provenance source.
  * - Explicit mode always wins.
  * - security_research is NEVER inferred from source alone.
