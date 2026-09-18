@@ -3,6 +3,9 @@
  * Proposed tools/URLs must be ⊆ the trusted user plan. Untrusted ingress
  * (email/file/web/mcp/other_agent/…) cannot expand the plan.
  */
+
+import { scanSecrets, scanSensitivePathMarkers } from '../outbound/secrets.js';
+
 export type UntrustedActionSource =
   | 'email'
   | 'web'
@@ -186,6 +189,67 @@ export function denyArgAllowlist(
   return null;
 }
 
+
+/** Sources that trigger GhostSplice arg-content gate before AG allow. */
+const ARG_CONTENT_GATE_SOURCES = new Set<string>(['mcp_result', 'api_response']);
+
+export function isArgContentGateSource(source: string | undefined): boolean {
+  return !!source && ARG_CONTENT_GATE_SOURCES.has(source);
+}
+
+export interface ProposedToolArgsHit {
+  kind: 'secret' | 'sensitive_path';
+  label: string;
+}
+
+export interface ProposedToolArgsScanResult {
+  /** True when args look like secret/path exfil — DENY or require re-approval. */
+  deny: boolean;
+  reason?: string;
+  hits: ProposedToolArgsHit[];
+}
+
+/** Stable stringify for proposed tool args (shapes only; no live secrets required). */
+export function stringifyProposedToolArgs(args: Record<string, unknown> | undefined): string {
+  if (args === undefined || args === null) return '';
+  try {
+    return JSON.stringify(args);
+  } catch {
+    return String(args);
+  }
+}
+
+/**
+ * GhostSplice thin land (A): scan proposed tool arg *contents* via existing
+ * outbound scanSecrets + sensitive-path markers (.ssh, id_rsa, .env, PEM, cloud keys).
+ * No new PI lexicon. Call before AG allow when source ∈ {mcp_result, api_response}.
+ */
+export function scanProposedToolArgs(
+  args: Record<string, unknown> | undefined,
+): ProposedToolArgsScanResult {
+  const text = stringifyProposedToolArgs(args);
+  if (!text) return { deny: false, hits: [] };
+
+  const hits: ProposedToolArgsHit[] = [];
+  for (const f of scanSecrets(text)) {
+    const label = (f.detail.match(/Possible (\S+)/)?.[1]) ?? 'secret';
+    hits.push({ kind: 'secret', label });
+  }
+  for (const f of scanSensitivePathMarkers(text)) {
+    const label = (f.detail.match(/\(([^)]+)\)/)?.[1]) ?? 'sensitive_path';
+    hits.push({ kind: 'sensitive_path', label });
+  }
+
+  if (hits.length === 0) return { deny: false, hits: [] };
+
+  const labels = [...new Set(hits.map((h) => h.label))].join(', ');
+  return {
+    deny: true,
+    reason: `proposed tool args look like secret/path exfil (${labels}) — deny/re-approval required even if tool is on TrustedPlan`,
+    hits,
+  };
+}
+
 export function actionGuard(
   trustedPlan: TrustedPlan,
   proposedActions: ProposedAction[],
@@ -217,12 +281,24 @@ export function actionGuard(
         });
         continue;
       }
-      const argDeny = denyArgAllowlist(name, action.type === 'tool' ? action.args : undefined, argAllowlist);
+      const toolArgs = action.type === 'tool' ? action.args : undefined;
+      const argDeny = denyArgAllowlist(name, toolArgs, argAllowlist);
       if (argDeny) {
         denied.push({ action, reason: argDeny });
-      } else {
-        allowed.push(action);
+        continue;
       }
+      // GhostSplice A: arg-content gate for mcp_result / api_response — even on TrustedPlan
+      if (action.type === 'tool' && isArgContentGateSource(opts?.source)) {
+        const contentScan = scanProposedToolArgs(toolArgs);
+        if (contentScan.deny) {
+          denied.push({
+            action,
+            reason: contentScan.reason ?? 'proposed tool args denied by arg-content gate',
+          });
+          continue;
+        }
+      }
+      allowed.push(action);
       continue;
     }
     if (action.type === 'fetch') {

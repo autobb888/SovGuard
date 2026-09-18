@@ -96,4 +96,4 @@ export { scanContamination } from './contamination.js';
 export { scanToxicity } from './toxicity.js';
 export { scanEgress } from './egress.js';
 export { scanExfil } from './exfil.js';
-export { scanSecrets } from './secrets.js';
+export { scanSecrets, scanSensitivePathMarkers } from './secrets.js';

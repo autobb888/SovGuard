@@ -23,3 +23,28 @@ export function scanSecrets(message: string): OutputFlag[] {
   }
   return flags;
 }
+
+/** Sensitive filesystem / credential-path markers (GhostSplice arg-content). */
+interface PathMarkerRule { re: RegExp; label: string; }
+const PATH_MARKERS: PathMarkerRule[] = [
+  { re: /\.ssh\b/i, label: 'ssh_path' },
+  { re: /\bid_rsa\b/i, label: 'id_rsa' },
+  { re: /(?:^|[\s"'`=/\\])\.env(?:\b|[.'"\s]|$)/i, label: 'dotenv_path' },
+];
+
+export function scanSensitivePathMarkers(message: string): OutputFlag[] {
+  const flags: OutputFlag[] = [];
+  for (const rule of PATH_MARKERS) {
+    if (rule.re.test(message)) {
+      flags.push({
+        type: 'secret_leak',
+        severity: 'high',
+        detail: `Sensitive path marker (${rule.label}) present in content`,
+        evidence: '(redacted)',
+        action: 'block',
+      });
+    }
+  }
+  return flags;
+}
+

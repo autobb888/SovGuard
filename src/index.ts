@@ -218,8 +218,8 @@ export type { FixedPointNorm } from './scanner/regex.js';
 
 export { detectPolicyRewrite, detectPolicyAck, detectCrescendoProbe } from './scanner/skeleton-key.js';
 
-export { actionGuard, flagUntrustedUrlEcho, extractRemoteUrls, isUntrustedActionSource } from './delivery/action-guard.js';
-export type { TrustedPlan, ProposedAction, ActionGuardResult, DeniedAction } from './delivery/action-guard.js';
+export { actionGuard, flagUntrustedUrlEcho, extractRemoteUrls, isUntrustedActionSource, scanProposedToolArgs, stringifyProposedToolArgs, isArgContentGateSource } from './delivery/action-guard.js';
+export type { TrustedPlan, ProposedAction, ActionGuardResult, DeniedAction, ProposedToolArgsScanResult, ProposedToolArgsHit } from './delivery/action-guard.js';
 export { urlOnTrustedAllowlist, normalizeUrlPathname } from './delivery/action-guard.js';
 
 export {
