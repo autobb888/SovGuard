@@ -10,6 +10,11 @@ import {
   approvalVectorFromToolAction,
   compareApprovalAtUse,
 } from './approval-binding.js';
+import {
+  collectSideRecipients,
+  preferenceRuleActTrust,
+  type PreferenceRuleProvenance,
+} from './memory-write-gate.js';
 
 
 export type UntrustedActionSource =
@@ -31,10 +36,13 @@ export interface TrustedPlan {
   tools?: string[];
   /** URL prefixes/origins the user authorized. */
   urls?: string[];
-  /** Optional per-tool arg allowlists. Key = "toolName.argName" (dot path). */
-  argAllowlist?: Record<string, string[]>;
-  /** Fixture alias for argAllowlist (e.g. allowlist["send_email.to"]). */
-  allowlist?: Record<string, string[]>;
+  /**
+   * Optional per-tool arg allowlists.
+   * Flat: `"toolName.argName": string[]` or nested: `{ toolName: { argName: string[] } }`.
+   */
+  argAllowlist?: Record<string, string[] | Record<string, string[]>> | Record<string, unknown>;
+  /** Fixture alias for argAllowlist (flat or nested). */
+  allowlist?: Record<string, string[] | Record<string, string[]>> | Record<string, unknown>;
 }
 
 export type ProposedAction =
@@ -128,11 +136,33 @@ export function urlOnTrustedAllowlist(candidate: string, allowlist: string[]): b
  * Authorize proposed tool/URL actions against the user-origin trusted plan.
  * Untrusted sources never expand the plan — they can only be checked against it.
  */
-const EMAIL_ARGS = new Set(["to", "cc", "bcc"]);
+const EMAIL_ARGS = new Set(["to", "cc", "bcc", "invitees", "attendees", "sync", "synctargets", "sync_targets", "sharewith", "share_with"]);
 
-/** Merge argAllowlist + fixture alias `allowlist`. */
+/**
+ * Flatten nested Threat Scout / host shape `{ tool: { arg: vals } }` into
+ * `"tool.arg": vals`. Flat `"tool.arg": vals` entries pass through.
+ */
+export function flattenArgAllowlist(raw: unknown): Record<string, string[]> {
+  if (!raw || typeof raw !== 'object') return {};
+  const out: Record<string, string[]> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (Array.isArray(v)) {
+      out[k] = v.map(String);
+    } else if (v && typeof v === 'object') {
+      for (const [arg, vals] of Object.entries(v as Record<string, unknown>)) {
+        if (Array.isArray(vals)) out[`${k}.${arg}`] = vals.map(String);
+      }
+    }
+  }
+  return out;
+}
+
+/** Merge argAllowlist + fixture alias `allowlist` (supports nested + flat). */
 export function resolveArgAllowlist(plan: TrustedPlan): Record<string, string[]> {
-  return { ...(plan.allowlist ?? {}), ...(plan.argAllowlist ?? {}) };
+  return {
+    ...flattenArgAllowlist(plan.allowlist),
+    ...flattenArgAllowlist(plan.argAllowlist),
+  };
 }
 
 function normalizeArgValue(argName: string, raw: string): string {
@@ -256,6 +286,51 @@ export function scanProposedToolArgs(
   };
 }
 
+/**
+ * PMPA C — side-recipient bind for acts driven by recalled PreferenceRules.
+ * When preference provenance is untrusted (or host opts.sideRecipientBind),
+ * invitees/cc/bcc/sync must ⊆ TrustedPlan argAllowlist. Open plan (tool allowed,
+ * no allowlist key for the side-recipient arg) is insufficient → DENY.
+ * Returns deny reason or null if allowed.
+ */
+export function denySideRecipientBind(
+  toolName: string,
+  args: Record<string, unknown> | undefined,
+  argAllowlist: Record<string, string[]>,
+  opts?: { force?: boolean; preferenceProvenance?: PreferenceRuleProvenance },
+): string | null {
+  const force =
+    opts?.force === true ||
+    (opts?.preferenceProvenance
+      ? preferenceRuleActTrust(opts.preferenceProvenance).untrustedForAct
+      : false);
+  if (!force) return null;
+
+  const sides = collectSideRecipients(args);
+  if (sides.length === 0) return null;
+
+  for (const { arg, values } of sides) {
+    const key = `${toolName}.${arg}`;
+    const allowedRaw = argAllowlist[key];
+    if (allowedRaw === undefined) {
+      return `side_recipient_bind: arg "${arg}" present but not on TrustedPlan argAllowlist (open plan insufficient for preference-driven side recipients)`;
+    }
+    if (allowedRaw.length === 0) {
+      return `side_recipient_bind: arg "${arg}" denied by empty plan allowlist`;
+    }
+    if (values.length === 0) {
+      return `side_recipient_bind: arg "${arg}" empty array denied by plan allowlist`;
+    }
+    const allowedVals = allowedRaw.map((s) => s.trim().toLowerCase());
+    for (const el of values) {
+      if (!allowedVals.includes(el.trim().toLowerCase())) {
+        return `side_recipient_bind: arg "${arg}" value not on plan allowlist: ${el}`;
+      }
+    }
+  }
+  return null;
+}
+
 export interface ActionGuardApprovalBindingOpts {
   store: ApprovalBindingStore;
   ticketId: string;
@@ -268,10 +343,17 @@ export interface ActionGuardApprovalBindingOpts {
 export function actionGuard(
   trustedPlan: TrustedPlan,
   proposedActions: ProposedAction[],
-  opts?: {
+    opts?: {
     source?: string;
     /** Loopjacking ApprovalBinding: use-time digest compare + one-shot consume on allow. */
     approvalBinding?: ActionGuardApprovalBindingOpts;
+    /**
+     * PMPA: recalled PreferenceRule provenance. When untrusted, force side-recipient
+     * bind (invitees/cc/bcc/sync ⊆ argAllowlist; open plan DENY).
+     */
+    preferenceProvenance?: PreferenceRuleProvenance;
+    /** Force side-recipient bind even without preferenceProvenance (tests / host). */
+    sideRecipientBind?: boolean;
   },
 ): ActionGuardResult {
   const allowedTools = new Set<string>([
@@ -304,6 +386,15 @@ export function actionGuard(
       const argDeny = denyArgAllowlist(name, toolArgs, argAllowlist);
       if (argDeny) {
         denied.push({ action, reason: argDeny });
+        continue;
+      }
+      // PMPA C: side-recipient bind when preference recall is untrusted / forced
+      const sideDeny = denySideRecipientBind(name, toolArgs, argAllowlist, {
+        force: opts?.sideRecipientBind === true,
+        preferenceProvenance: opts?.preferenceProvenance,
+      });
+      if (sideDeny) {
+        denied.push({ action, reason: sideDeny });
         continue;
       }
       // GhostSplice A: arg-content gate for mcp_result / api_response — even on TrustedPlan

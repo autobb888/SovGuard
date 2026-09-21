@@ -218,9 +218,27 @@ export type { FixedPointNorm } from './scanner/regex.js';
 
 export { detectPolicyRewrite, detectPolicyAck, detectCrescendoProbe } from './scanner/skeleton-key.js';
 
-export { actionGuard, flagUntrustedUrlEcho, extractRemoteUrls, isUntrustedActionSource, scanProposedToolArgs, stringifyProposedToolArgs, isArgContentGateSource } from './delivery/action-guard.js';
+export { actionGuard, flagUntrustedUrlEcho, extractRemoteUrls, isUntrustedActionSource, scanProposedToolArgs, stringifyProposedToolArgs, isArgContentGateSource, denySideRecipientBind, flattenArgAllowlist, resolveArgAllowlist, denyArgAllowlist } from './delivery/action-guard.js';
 export type { TrustedPlan, ProposedAction, ActionGuardResult, DeniedAction, ProposedToolArgsScanResult, ProposedToolArgsHit, ActionGuardApprovalBindingOpts } from './delivery/action-guard.js';
 export { urlOnTrustedAllowlist, normalizeUrlPathname } from './delivery/action-guard.js';
+
+export {
+  memoryWriteGate,
+  detectMemoryWriteIntent,
+  preferenceRuleActTrust,
+  PreferenceRuleStore,
+  collectSideRecipients,
+  isSideRecipientArg,
+  SIDE_RECIPIENT_ARGS,
+} from './delivery/memory-write-gate.js';
+export type {
+  PreferenceRule,
+  PreferenceRuleProvenance,
+  MemoryWriteAttempt,
+  MemoryWriteGateResult,
+  MemoryWriteGateVerdict,
+} from './delivery/memory-write-gate.js';
+
 
 export {
   ApprovalBindingStore,

@@ -68,3 +68,17 @@ const decision = actionGuard(trustedPlan, proposedActions, {
 ```
 
 Mutated args / consumed replay → DENY. See `docs/approval-binding.md`. Orthogonal to argAllowlist, `scanProposedToolArgs`, and SchemaConsent.
+
+## Side-recipient bind (PMPA / KPI-C compose)
+
+When a recalled PreferenceRule has untrusted provenance, pass `opts.preferenceProvenance` so ActionGuard forces side-recipient bind before allow:
+
+```typescript
+const decision = actionGuard(trustedPlan, proposedActions, {
+  preferenceProvenance: recalledRule.provenance, // contentTrust: 'untrusted'
+});
+// invitees / cc / bcc / sync must ⊆ TrustedPlan argAllowlist
+// Open plan (tool allowed, no allowlist key) → DENY
+```
+
+Compose MemoryWriteGate + PreferenceRule provenance. See `docs/memory-write-gate.md`. Orthogonal to GhostSplice arg-content, Deadbugz schema integrity, and Loopjacking ApprovalBinding.
