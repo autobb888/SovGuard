@@ -239,6 +239,19 @@ export type {
   MemoryWriteGateVerdict,
 } from './delivery/memory-write-gate.js';
 
+export {
+  ArtifactProvenanceStore,
+  checkComposeProvenance,
+  tagsConsistent,
+  collectArtifactRefsFromArgs,
+  denyInconsistentArtifactCompose,
+  ARTIFACT_REF_ARG_KEYS,
+} from './delivery/artifact-provenance.js';
+export type {
+  ArtifactProvenanceTag,
+  ArtifactComposeGateResult,
+  ArtifactComposeVerdict,
+} from './delivery/artifact-provenance.js';
 
 export {
   ApprovalBindingStore,

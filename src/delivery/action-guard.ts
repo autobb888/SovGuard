@@ -15,6 +15,10 @@ import {
   preferenceRuleActTrust,
   type PreferenceRuleProvenance,
 } from './memory-write-gate.js';
+import {
+  denyInconsistentArtifactCompose,
+  type ArtifactProvenanceStore,
+} from './artifact-provenance.js';
 
 
 export type UntrustedActionSource =
@@ -354,6 +358,16 @@ export function actionGuard(
     preferenceProvenance?: PreferenceRuleProvenance;
     /** Force side-recipient bind even without preferenceProvenance (tests / host). */
     sideRecipientBind?: boolean;
+    /**
+     * CFD ArtifactProvenance: composed egress spanning inconsistent / cross-session
+     * artifact tags → DENY / re-approve (open plan insufficient). Distinct from PMPA.
+     */
+    artifactProvenance?: {
+      store: ArtifactProvenanceStore;
+      composeSessionId?: string;
+      /** Explicit artifact refs (host may supply; else extracted from tool args). */
+      artifactRefs?: string[];
+    };
   },
 ): ActionGuardResult {
   const allowedTools = new Set<string>([
@@ -396,6 +410,18 @@ export function actionGuard(
       if (sideDeny) {
         denied.push({ action, reason: sideDeny });
         continue;
+      }
+      // CFD ArtifactProvenance B/C: inconsistent / cross-session compose → DENY (open plan insufficient)
+      if (action.type === 'tool' && opts?.artifactProvenance?.store) {
+        const cfdDeny = denyInconsistentArtifactCompose(toolArgs, {
+          store: opts.artifactProvenance.store,
+          composeSessionId: opts.artifactProvenance.composeSessionId,
+          artifactRefs: opts.artifactProvenance.artifactRefs,
+        });
+        if (cfdDeny) {
+          denied.push({ action, reason: cfdDeny });
+          continue;
+        }
       }
       // GhostSplice A: arg-content gate for mcp_result / api_response — even on TrustedPlan
       if (action.type === 'tool' && isArgContentGateSource(opts?.source)) {
