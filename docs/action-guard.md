@@ -40,3 +40,31 @@ Per-server/session correlator over schema-doc + recent `mcp_result` texts (≥2 
 ### MCP sampling (docs / soft residual)
 
 Treat MCP `sampling/createMessage` fields `systemPrompt` and `includeContext` as **untrusted**. Prefer human gate / SourceTrust before they influence acts. No dedicated sampling API in this tip (docs-only soft residual OK).
+
+
+## ApprovalBinding (Loopjacking compose)
+
+When the host has a HITL-approved ticket, pass `opts.approvalBinding` so ActionGuard rechecks the use-time digest of `(tool, args, destination, scope)` **before allow** and **consumes** the ticket on successful release:
+
+```typescript
+import { actionGuard, ApprovalBindingStore, approveAction } from '@sovguard/engine';
+
+const store = new ApprovalBindingStore();
+const { ticket } = approveAction(store, {
+  tool: 'send_email',
+  args: approvedArgs,
+  destination: 'smtp://…',
+  scope: 'user_initiated',
+});
+
+const decision = actionGuard(trustedPlan, proposedActions, {
+  approvalBinding: {
+    store,
+    ticketId: ticket!.id,
+    destination: 'smtp://…',
+    scope: 'user_initiated',
+  },
+});
+```
+
+Mutated args / consumed replay → DENY. See `docs/approval-binding.md`. Orthogonal to argAllowlist, `scanProposedToolArgs`, and SchemaConsent.

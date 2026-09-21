@@ -5,6 +5,12 @@
  */
 
 import { scanSecrets, scanSensitivePathMarkers } from '../outbound/secrets.js';
+import {
+  ApprovalBindingStore,
+  approvalVectorFromToolAction,
+  compareApprovalAtUse,
+} from './approval-binding.js';
+
 
 export type UntrustedActionSource =
   | 'email'
@@ -250,10 +256,23 @@ export function scanProposedToolArgs(
   };
 }
 
+export interface ActionGuardApprovalBindingOpts {
+  store: ApprovalBindingStore;
+  ticketId: string;
+  /** Destination bound at approve / rechecked at use-time. */
+  destination?: string;
+  /** Scope bound at approve / rechecked at use-time. */
+  scope?: string;
+}
+
 export function actionGuard(
   trustedPlan: TrustedPlan,
   proposedActions: ProposedAction[],
-  opts?: { source?: string },
+  opts?: {
+    source?: string;
+    /** Loopjacking ApprovalBinding: use-time digest compare + one-shot consume on allow. */
+    approvalBinding?: ActionGuardApprovalBindingOpts;
+  },
 ): ActionGuardResult {
   const allowedTools = new Set<string>([
     ...(trustedPlan.tools ?? []),
@@ -294,6 +313,30 @@ export function actionGuard(
           denied.push({
             action,
             reason: contentScan.reason ?? 'proposed tool args denied by arg-content gate',
+          });
+          continue;
+        }
+      }
+      // Loopjacking ApprovalBinding: use-time digest vs HITL-approved ticket
+      if (action.type === 'tool' && opts?.approvalBinding) {
+        const ab = opts.approvalBinding;
+        const useVec = approvalVectorFromToolAction(name, toolArgs, {
+          destination: ab.destination,
+          scope: ab.scope,
+        });
+        const cmp = compareApprovalAtUse(ab.store, ab.ticketId, useVec);
+        if (!cmp.match) {
+          denied.push({
+            action,
+            reason: cmp.reason ?? 'approval binding mismatch — deny / require re-approval',
+          });
+          continue;
+        }
+        // C: one-shot consume after successful release (allow path)
+        if (!ab.store.consume(ab.ticketId)) {
+          denied.push({
+            action,
+            reason: 'approval ticket already consumed — replay denied',
           });
           continue;
         }
