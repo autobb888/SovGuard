@@ -97,3 +97,13 @@ export { scanToxicity } from './toxicity.js';
 export { scanEgress } from './egress.js';
 export { scanExfil } from './exfil.js';
 export { scanSecrets, scanSensitivePathMarkers } from './secrets.js';
+
+export {
+  shouldRecommendDataProtection,
+  recommendDataProtection,
+  sessionGateDataProtection,
+} from './data-protection-hygiene.js';
+export type {
+  DataProtectionSessionContext,
+  DataProtectionGateResult,
+} from './data-protection-hygiene.js';

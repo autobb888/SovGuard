@@ -200,6 +200,16 @@ export { scanFileContent, scanText } from './file/content-scanner.js';
 export type { ContentScanResult, ContentScanOptions } from './file/content-scanner.js';
 export { getStats, resetStats } from './monitor/stats.js';
 export { scanOutput } from './outbound/index.js';
+
+export {
+  shouldRecommendDataProtection,
+  recommendDataProtection,
+  sessionGateDataProtection,
+} from './outbound/data-protection-hygiene.js';
+export type {
+  DataProtectionSessionContext,
+  DataProtectionGateResult,
+} from './outbound/data-protection-hygiene.js';
 export { scanPII } from './outbound/pii.js';
 export { scanURLs } from './outbound/urls.js';
 export { scanCode } from './outbound/code.js';
@@ -218,7 +228,7 @@ export type { FixedPointNorm } from './scanner/regex.js';
 
 export { detectPolicyRewrite, detectPolicyAck, detectCrescendoProbe } from './scanner/skeleton-key.js';
 
-export { actionGuard, flagUntrustedUrlEcho, extractRemoteUrls, isUntrustedActionSource, scanProposedToolArgs, stringifyProposedToolArgs, isArgContentGateSource, denySideRecipientBind, denyEpGoalDestinationBind, flattenArgAllowlist, resolveArgAllowlist, denyArgAllowlist } from './delivery/action-guard.js';
+export { actionGuard, flagUntrustedUrlEcho, extractRemoteUrls, isUntrustedActionSource, scanProposedToolArgs, stringifyProposedToolArgs, isArgContentGateSource, denySideRecipientBind, denyEpGoalDestinationBind, flattenArgAllowlist, resolveArgAllowlist, denyArgAllowlist, denyShellClassPolicy, denyShellDestinationBind, isShellClassTool, isDestinationBindTool, isTrustedShellSource, collectDestinationUrls, DEFAULT_SHELL_CLASS_TOOLS, DEFAULT_DESTINATION_BIND_TOOLS } from './delivery/action-guard.js';
 export type { TrustedPlan, ProposedAction, ActionGuardResult, DeniedAction, ProposedToolArgsScanResult, ProposedToolArgsHit, ActionGuardApprovalBindingOpts } from './delivery/action-guard.js';
 export { urlOnTrustedAllowlist, normalizeUrlPathname } from './delivery/action-guard.js';
 

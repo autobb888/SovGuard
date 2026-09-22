@@ -427,6 +427,225 @@ export function denyEpGoalDestinationBind(
   return null;
 }
 
+/** Default shell-class tool names (AgentCore harness analogue — configurable). */
+export const DEFAULT_SHELL_CLASS_TOOLS: readonly string[] = [
+  'shell',
+  'bash',
+  'sh',
+  'code_interpreter',
+  'run_terminal',
+  'terminal',
+  'file_operations',
+] as const;
+
+/** HTTP / fetch / POST-class tools whose URL destinations must bind to TrustedPlan. */
+export const DEFAULT_DESTINATION_BIND_TOOLS: readonly string[] = [
+  'fetch',
+  'http_post',
+  'http_request',
+  'post',
+  'webhook',
+  'curl',
+  'request',
+] as const;
+
+const SHELL_TRUSTED_SOURCES = new Set([
+  'user',
+  'user_confirmed',
+  'user_chat',
+  'trusted',
+  'hitl',
+  'explicit_confirm',
+]);
+
+/** User / HITL SourceTrust clears shell-class escalate (G3). */
+export function isTrustedShellSource(sourceTrust: string | undefined): boolean {
+  if (!sourceTrust) return false;
+  return SHELL_TRUSTED_SOURCES.has(sourceTrust.toLowerCase());
+}
+
+export function normalizeToolName(name: string): string {
+  return name.trim().toLowerCase();
+}
+
+/**
+ * True when tool name is in the shell class (default set or host override).
+ * Matching is case-insensitive; also matches trailing aliases like `run_shell`.
+ */
+export function isShellClassTool(
+  toolName: string,
+  shellClass?: readonly string[] | string[],
+): boolean {
+  const set = new Set(
+    (shellClass ?? DEFAULT_SHELL_CLASS_TOOLS).map((s) => normalizeToolName(String(s))),
+  );
+  const n = normalizeToolName(toolName);
+  if (set.has(n)) return true;
+  // Soft aliases commonly seen in harness / agent tool catalogs
+  if (n.includes('code_interpreter') || n.includes('run_terminal')) return true;
+  return false;
+}
+
+export function isDestinationBindTool(
+  toolName: string,
+  extra?: readonly string[] | string[],
+): boolean {
+  const set = new Set([
+    ...DEFAULT_DESTINATION_BIND_TOOLS.map(normalizeToolName),
+    ...(extra ?? []).map((s) => normalizeToolName(String(s))),
+  ]);
+  return set.has(normalizeToolName(toolName)) || isShellClassTool(toolName);
+}
+
+/**
+ * A — ActionGuard shell-class policy (AgentCore heap-view thin land).
+ * Shell-class tools → DENY/escalate when SourceTrust is untrusted (even if on plan)
+ * OR when omitted from TrustedPlan tools/actions. Explicit user/HITL → clear untrusted gate.
+ * Returns deny reason or null if allowed by this policy alone.
+ */
+export function denyShellClassPolicy(
+  toolName: string,
+  opts?: {
+    SourceTrust?: string;
+    sourceTrust?: string;
+    /** Legacy ActionGuard `source` (email/file/mcp_result/…) — counts as untrusted. */
+    source?: string;
+    hitlConfirm?: boolean;
+    /** Host-configurable shell class; defaults to DEFAULT_SHELL_CLASS_TOOLS. */
+    shellClass?: readonly string[] | string[];
+    /** When false, skip this gate (tests / host opt-out). Default true. */
+    enforceShellClass?: boolean;
+    /** Whether tool name is already known to be on TrustedPlan. */
+    onTrustedPlan?: boolean;
+  },
+): string | null {
+  if (opts?.enforceShellClass === false) return null;
+  if (!isShellClassTool(toolName, opts?.shellClass)) return null;
+
+  // Off-plan shell → DENY (G1)
+  if (opts?.onTrustedPlan === false) {
+    return `shell_class_policy: tool "${toolName}" omitted from TrustedPlan (shell-class requires explicit allow)`;
+  }
+
+  const trust = opts?.SourceTrust ?? opts?.sourceTrust;
+  if (opts?.hitlConfirm === true || isTrustedShellSource(trust)) {
+    return null; // G3 user/HITL authorize → ALLOW
+  }
+
+  const fromUntrustedSource = isUntrustedActionSource(opts?.source);
+  const fromUntrustedTrust = !!trust && !isTrustedShellSource(trust);
+
+  // G2: untrusted SourceTrust / ingress → DENY/HITL even if tool name on plan
+  if (fromUntrustedTrust || fromUntrustedSource) {
+    const label = trust ?? opts?.source ?? 'untrusted';
+    return `shell_class_policy: tool "${toolName}" is shell-class — DENY/escalate for untrusted SourceTrust="${label}" (even if on TrustedPlan; require user/HITL)`;
+  }
+
+  // Missing SourceTrust + no untrusted source + on plan → ALLOW (host explicit allow analogue)
+  return null;
+}
+
+/** Arg keys that commonly carry destinations / webhooks for shell/fetch/POST. */
+const DEST_URL_ARG_KEYS = new Set([
+  'url',
+  'urls',
+  'uri',
+  'endpoint',
+  'destination',
+  'webhook',
+  'webhook_url',
+  'webhookurl',
+  'target',
+  'target_url',
+  'post_url',
+  'callback',
+  'callback_url',
+  'host',
+  'href',
+]);
+
+const CMD_ARG_KEYS = new Set(['cmd', 'command', 'script', 'code', 'input', 'args', 'argv']);
+
+const URL_IN_TEXT_RE = /https?:\/\/[^\s"'\\]+/gi;
+
+/** Collect destination URL strings from tool args (explicit keys + URLs embedded in cmd). */
+export function collectDestinationUrls(
+  args: Record<string, unknown> | undefined,
+): Array<{ arg: string; url: string }> {
+  if (!args) return [];
+  const out: Array<{ arg: string; url: string }> = [];
+  for (const [k, v] of Object.entries(args)) {
+    const lk = k.toLowerCase();
+    if (DEST_URL_ARG_KEYS.has(lk)) {
+      const values: string[] = [];
+      if (typeof v === 'string') values.push(v);
+      else if (Array.isArray(v)) {
+        for (const el of v) if (typeof el === 'string') values.push(el);
+      }
+      for (const u of values) {
+        if (/^https?:\/\//i.test(u.trim())) out.push({ arg: k, url: u.trim() });
+      }
+      continue;
+    }
+    if (CMD_ARG_KEYS.has(lk) && typeof v === 'string') {
+      const matches = v.match(URL_IN_TEXT_RE) ?? [];
+      for (const m of matches) out.push({ arg: k, url: m.replace(/[.,;]+$/, '') });
+    }
+  }
+  return out;
+}
+
+/**
+ * B — KPI-C destination bind for shell/fetch/POST.
+ * Destination/URL args must ⊆ TrustedPlan.urls OR per-arg argAllowlist.
+ * Open plan (tool allowed, no urls / no allowlist key) is insufficient for unexpected webhooks.
+ * Returns deny reason or null if allowed.
+ */
+export function denyShellDestinationBind(
+  toolName: string,
+  args: Record<string, unknown> | undefined,
+  trustedPlan: TrustedPlan,
+  opts?: {
+    /** Force bind even for non-shell tools (tests). */
+    force?: boolean;
+    shellClass?: readonly string[] | string[];
+    destinationBindTools?: readonly string[] | string[];
+  },
+): string | null {
+  const apply =
+    opts?.force === true ||
+    isDestinationBindTool(toolName, opts?.destinationBindTools) ||
+    isShellClassTool(toolName, opts?.shellClass);
+  if (!apply) return null;
+
+  const destinations = collectDestinationUrls(args);
+  if (destinations.length === 0) return null;
+
+  const allowedUrls = [...(trustedPlan.urls ?? [])];
+  const argAllowlist = resolveArgAllowlist(trustedPlan);
+
+  for (const { arg, url } of destinations) {
+    const key = `${toolName}.${arg}`;
+    const allowVals = argAllowlist[key];
+    const onArgList =
+      allowVals !== undefined &&
+      allowVals.some((a) => {
+        const av = a.trim();
+        if (!av) return false;
+        if (av === url) return true;
+        return urlOnTrustedAllowlist(url, [av]);
+      });
+    const onUrlList = allowedUrls.length > 0 && urlOnTrustedAllowlist(url, allowedUrls);
+    if (onArgList || onUrlList) continue;
+
+    if (allowedUrls.length === 0 && allowVals === undefined) {
+      return `shell_destination_bind: destination "${url}" (arg "${arg}") present but TrustedPlan has no urls/argAllowlist entry (open plan insufficient for unexpected webhooks)`;
+    }
+    return `shell_destination_bind: destination "${url}" (arg "${arg}") not on TrustedPlan urls/argAllowlist`;
+  }
+  return null;
+}
+
 export interface ActionGuardApprovalBindingOpts {
   store: ApprovalBindingStore;
   ticketId: string;
@@ -474,6 +693,21 @@ export function actionGuard(
       sourceTrust?: string;
       hitlConfirm?: boolean;
     };
+    /**
+     * AgentCore heap-view A: shell-class policy. SourceTrust / HITL for shell tools.
+     * When omitted, uses opts.source as ingress provenance.
+     */
+    SourceTrust?: string;
+    sourceTrust?: string;
+    hitlConfirm?: boolean;
+    /** Override default shell-class name set. */
+    shellClass?: readonly string[] | string[];
+    /** Set false to disable shell-class gate (default true). */
+    enforceShellClass?: boolean;
+    /** Extra tool names that require destination bind (beyond shell + fetch/POST). */
+    destinationBindTools?: readonly string[] | string[];
+    /** Set false to disable destination bind (default true). */
+    enforceDestinationBind?: boolean;
   },
 ): ActionGuardResult {
   const allowedTools = new Set<string>([
@@ -503,6 +737,31 @@ export function actionGuard(
         continue;
       }
       const toolArgs = action.type === 'tool' ? action.args : undefined;
+      // AgentCore A: shell-class policy — untrusted → DENY/HITL even if on plan
+      const shellDeny = denyShellClassPolicy(name, {
+        SourceTrust: opts?.SourceTrust ?? opts?.delayedPlant?.SourceTrust,
+        sourceTrust: opts?.sourceTrust ?? opts?.delayedPlant?.sourceTrust,
+        source: opts?.source,
+        hitlConfirm: opts?.hitlConfirm ?? opts?.delayedPlant?.hitlConfirm,
+        shellClass: opts?.shellClass,
+        enforceShellClass: opts?.enforceShellClass,
+        onTrustedPlan: true,
+      });
+      if (shellDeny) {
+        denied.push({ action, reason: shellDeny });
+        continue;
+      }
+      // AgentCore B: KPI-C destination bind for shell/fetch/POST
+      if (opts?.enforceDestinationBind !== false && action.type === 'tool') {
+        const destDeny = denyShellDestinationBind(name, toolArgs, trustedPlan, {
+          shellClass: opts?.shellClass,
+          destinationBindTools: opts?.destinationBindTools,
+        });
+        if (destDeny) {
+          denied.push({ action, reason: destDeny });
+          continue;
+        }
+      }
       const argDeny = denyArgAllowlist(name, toolArgs, argAllowlist);
       if (argDeny) {
         denied.push({ action, reason: argDeny });

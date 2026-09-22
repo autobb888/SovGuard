@@ -104,3 +104,21 @@ const decision = actionGuard(trustedPlan, proposedActions, {
 KPI-C: when a plant is armed, goal destinations/recipients must ⊆ TrustedPlan
 `argAllowlist` (`denyEpGoalDestinationBind`). See `docs/explosiveprompt-delayed-trigger.md`.
 
+
+## Shell-class policy + destination bind (AgentCore heap-view)
+
+Shell-class tools (`shell`, `bash`, `code_interpreter`, …) require explicit
+TrustedPlan membership **and** trusted SourceTrust / HITL when ingress is
+untrusted — even if the tool name is already on the plan:
+
+```typescript
+const decision = actionGuard(trustedPlan, proposedActions, {
+  source: 'email',
+  SourceTrust: 'email', // → DENY shell_class_policy for shell-class tools
+});
+```
+
+Destination/URL args on shell/fetch/POST must ⊆ `TrustedPlan.urls` /
+`argAllowlist` (`denyShellDestinationBind`). Open plan is insufficient for
+unexpected webhooks. Soft PARK: OS heap/UID/TTL/egress remain platform. See
+`docs/agentcore-shell-class.md`.
