@@ -19,6 +19,11 @@ import {
   denyInconsistentArtifactCompose,
   type ArtifactProvenanceStore,
 } from './artifact-provenance.js';
+import {
+  denyDelayedPlantBind,
+  type DelayedArm,
+  type DelayedTriggerWatch,
+} from '../scanner/delayed-trigger.js';
 
 
 export type UntrustedActionSource =
@@ -335,6 +340,93 @@ export function denySideRecipientBind(
   return null;
 }
 
+
+/**
+ * EP / DL-008 C — KPI-C compose for goal destinations/recipients on EP-armed acts.
+ * When a delayed plant is armed (untrusted), side recipients + primary `to`/`destination`
+ * must ⊆ TrustedPlan argAllowlist. Open plan (tool allowed, no allowlist key) → DENY.
+ * User/HITL SourceTrust skips (G4). Distinct from PMPA preferenceProvenance.
+ */
+export function denyEpGoalDestinationBind(
+  toolName: string,
+  args: Record<string, unknown> | undefined,
+  argAllowlist: Record<string, string[]>,
+  opts?: {
+    plantArmed?: boolean;
+    SourceTrust?: string;
+    sourceTrust?: string;
+    hitlConfirm?: boolean;
+  },
+): string | null {
+  if (!opts?.plantArmed) return null;
+  const trust = opts.SourceTrust ?? opts.sourceTrust;
+  if (
+    opts.hitlConfirm === true ||
+    (trust &&
+      ['user', 'user_confirmed', 'user_chat', 'trusted', 'hitl', 'explicit_confirm'].includes(
+        trust.toLowerCase(),
+      ))
+  ) {
+    return null;
+  }
+
+  const GOAL_DEST_ARGS = new Set([
+    'to',
+    'cc',
+    'bcc',
+    'invitees',
+    'attendees',
+    'destination',
+    'recipient',
+    'recipients',
+    'sync',
+    'syncTargets',
+    'sync_targets',
+    'shareWith',
+    'share_with',
+  ]);
+
+  if (!args) return null;
+  const present: Array<{ arg: string; values: string[] }> = [];
+  for (const [k, v] of Object.entries(args)) {
+    if (!GOAL_DEST_ARGS.has(k) && !GOAL_DEST_ARGS.has(k.toLowerCase())) continue;
+    const values: string[] = [];
+    if (typeof v === 'string') values.push(v);
+    else if (Array.isArray(v)) {
+      for (const el of v) {
+        if (typeof el === 'string') values.push(el);
+      }
+    }
+    present.push({ arg: k, values });
+  }
+  // Also pull side recipients (PMPA helper) — union
+  for (const s of collectSideRecipients(args)) {
+    if (!present.some((p) => p.arg === s.arg)) present.push(s);
+  }
+  if (present.length === 0) return null;
+
+  for (const { arg, values } of present) {
+    const key = `${toolName}.${arg}`;
+    const allowedRaw = argAllowlist[key];
+    if (allowedRaw === undefined) {
+      return `ep_goal_destination_bind: arg "${arg}" present on EP-armed act but not on TrustedPlan argAllowlist (open plan insufficient)`;
+    }
+    if (allowedRaw.length === 0) {
+      return `ep_goal_destination_bind: arg "${arg}" denied by empty plan allowlist`;
+    }
+    if (values.length === 0) {
+      return `ep_goal_destination_bind: arg "${arg}" empty array denied by plan allowlist`;
+    }
+    const allowedVals = allowedRaw.map((s) => s.trim().toLowerCase());
+    for (const el of values) {
+      if (!allowedVals.includes(el.trim().toLowerCase())) {
+        return `ep_goal_destination_bind: arg "${arg}" value not on plan allowlist: ${el}`;
+      }
+    }
+  }
+  return null;
+}
+
 export interface ActionGuardApprovalBindingOpts {
   store: ApprovalBindingStore;
   ticketId: string;
@@ -367,6 +459,20 @@ export function actionGuard(
       composeSessionId?: string;
       /** Explicit artifact refs (host may supply; else extracted from tool args). */
       artifactRefs?: string[];
+    };
+    /**
+     * ExplosivePrompt / DL-008 plant-provenance bind: proposed tool matching armed
+     * deferred action from untrusted ingest → DENY / escalate. Closing alone
+     * insufficient. Open TrustedPlan does not clear the bind.
+     * User / HITL (SourceTrust=user or hitlConfirm) → ALLOW (G4).
+     */
+    delayedPlant?: {
+      watch?: DelayedTriggerWatch;
+      sessionId?: string;
+      plantArms?: DelayedArm[];
+      SourceTrust?: string;
+      sourceTrust?: string;
+      hitlConfirm?: boolean;
     };
   },
 ): ActionGuardResult {
@@ -421,6 +527,38 @@ export function actionGuard(
         if (cfdDeny) {
           denied.push({ action, reason: cfdDeny });
           continue;
+        }
+      }
+      // ExplosivePrompt / DL-008 B: plant-provenance bind — tool fire ↔ untrusted delayed plant
+      if (action.type === 'tool' && opts?.delayedPlant) {
+        const dp = opts.delayedPlant;
+        const plantDeny = denyDelayedPlantBind(name, {
+          watch: dp.watch,
+          sessionId: dp.sessionId,
+          plantArms: dp.plantArms,
+          SourceTrust: dp.SourceTrust,
+          sourceTrust: dp.sourceTrust,
+          hitlConfirm: dp.hitlConfirm,
+        });
+        if (plantDeny) {
+          denied.push({ action, reason: plantDeny });
+          continue;
+        }
+        // C: KPI-C goal destination/recipient bind when plant armed
+        const armed =
+          (dp.plantArms && dp.plantArms.length > 0) ||
+          (dp.watch && dp.sessionId ? dp.watch.hasArms(dp.sessionId) : false);
+        if (armed) {
+          const destDeny = denyEpGoalDestinationBind(name, toolArgs, argAllowlist, {
+            plantArmed: true,
+            SourceTrust: dp.SourceTrust,
+            sourceTrust: dp.sourceTrust,
+            hitlConfirm: dp.hitlConfirm,
+          });
+          if (destDeny) {
+            denied.push({ action, reason: destDeny });
+            continue;
+          }
         }
       }
       // GhostSplice A: arg-content gate for mcp_result / api_response — even on TrustedPlan

@@ -82,3 +82,25 @@ const decision = actionGuard(trustedPlan, proposedActions, {
 ```
 
 Compose MemoryWriteGate + PreferenceRule provenance. See `docs/memory-write-gate.md`. Orthogonal to GhostSplice arg-content, Deadbugz schema integrity, and Loopjacking ApprovalBinding.
+
+## ExplosivePrompt / DL-008 plant-provenance bind
+
+When untrusted ingest armed a delayed conditional (EP / sleeping rule), pass
+`opts.delayedPlant` so ActionGuard DENYs proposed tools that match the armed
+deferred action — even on an open TrustedPlan. Closing utterance alone is
+insufficient. User / HITL (`SourceTrust=user` or `hitlConfirm`) → ALLOW.
+
+```typescript
+import { actionGuard, DelayedTriggerWatch, detectDelayedTrigger } from '@sovguard/engine';
+
+const watch = new DelayedTriggerWatch();
+watch.recordIngest(sessionId, detectDelayedTrigger(ingestText), { sourceTrust: 'untrusted' });
+
+const decision = actionGuard(trustedPlan, proposedActions, {
+  delayedPlant: { watch, sessionId },
+});
+```
+
+KPI-C: when a plant is armed, goal destinations/recipients must ⊆ TrustedPlan
+`argAllowlist` (`denyEpGoalDestinationBind`). See `docs/explosiveprompt-delayed-trigger.md`.
+

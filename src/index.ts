@@ -218,7 +218,7 @@ export type { FixedPointNorm } from './scanner/regex.js';
 
 export { detectPolicyRewrite, detectPolicyAck, detectCrescendoProbe } from './scanner/skeleton-key.js';
 
-export { actionGuard, flagUntrustedUrlEcho, extractRemoteUrls, isUntrustedActionSource, scanProposedToolArgs, stringifyProposedToolArgs, isArgContentGateSource, denySideRecipientBind, flattenArgAllowlist, resolveArgAllowlist, denyArgAllowlist } from './delivery/action-guard.js';
+export { actionGuard, flagUntrustedUrlEcho, extractRemoteUrls, isUntrustedActionSource, scanProposedToolArgs, stringifyProposedToolArgs, isArgContentGateSource, denySideRecipientBind, denyEpGoalDestinationBind, flattenArgAllowlist, resolveArgAllowlist, denyArgAllowlist } from './delivery/action-guard.js';
 export type { TrustedPlan, ProposedAction, ActionGuardResult, DeniedAction, ProposedToolArgsScanResult, ProposedToolArgsHit, ActionGuardApprovalBindingOpts } from './delivery/action-guard.js';
 export { urlOnTrustedAllowlist, normalizeUrlPathname } from './delivery/action-guard.js';
 
@@ -301,8 +301,14 @@ export type { BoundaryScrubOptions, BoundaryScrubResult } from './scanner/bounda
 export { ingestPeerEnvelope, stripHtmlComments } from './delivery/peer-envelope.js';
 export type { PeerEnvelope, PeerIngestOptions, PeerIngestResult } from './delivery/peer-envelope.js';
 
-export { detectDelayedTrigger, DelayedTriggerWatch, delayedTriggerWatch } from './scanner/delayed-trigger.js';
-export type { DelayedTriggerHit, DelayedArm } from './scanner/delayed-trigger.js';
+export {
+  detectDelayedTrigger,
+  DelayedTriggerWatch,
+  delayedTriggerWatch,
+  denyDelayedPlantBind,
+  isTrustedPlantSource,
+} from './scanner/delayed-trigger.js';
+export type { DelayedTriggerHit, DelayedArm, DelayedArmType } from './scanner/delayed-trigger.js';
 
 export { detectDecomposition, DecompositionWatch, decompositionWatch } from './scanner/decomposition.js';
 export type { DecompositionHit, FragmentEntry } from './scanner/decomposition.js';
