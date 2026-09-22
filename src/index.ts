@@ -295,6 +295,30 @@ export type {
   ContinuousSchemaToolResult,
 } from './scanner/tool-schema.js';
 
+export {
+  isolateDiscoveryInstructions,
+  mayFoldIntoTrustedRegion,
+  hashDiscoveryInstructions,
+  normalizeDiscoveryInstructions,
+  isEmptyDiscoveryInstructions,
+  checkDiscoveryInstructionsConsent,
+  DiscoveryInstructionsConsentStore,
+  assertDiscoveryInstructionsIntegrity,
+  evaluateDiscoveryCacheScope,
+  bindDiscoveryCacheKey,
+  DEFAULT_INSTRUCTIONS_MAX_LENGTH,
+  DISCOVERY_INSTRUCTIONS_LABEL,
+} from './scanner/mcp-discovery-instructions.js';
+export type {
+  IsolatedDiscoveryInstructions,
+  ConsentedDiscoveryInstructions,
+  InstructionsDriftCheck,
+  DiscoveryInstructionsIntegrityResult,
+  DiscoveryCachePolicy,
+  DiscoveryCacheDecision,
+  DiscoveryInstructionsTrust,
+} from './scanner/mcp-discovery-instructions.js';
+
 export { scrubBoundaries, scrubUntrustedIngress, neutralizeBoundaryToken, hasRawBoundaryToken, DEFAULT_BOUNDARY_PATTERNS } from './scanner/boundary-scrub.js';
 export type { BoundaryScrubOptions, BoundaryScrubResult } from './scanner/boundary-scrub.js';
 

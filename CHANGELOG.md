@@ -1,6 +1,11 @@
 ## Unreleased
 
 ### Added
+- **MCP DiscoveryInstructions (thin land):** Isolate+label MCP `initialize`/discovery `instructions` as **untrusted** (`isolateDiscoveryInstructions`); length cap; never default-fold into trusted/system (`trustedRegionEligible: false`). Pin instructions digest at consent (`DiscoveryInstructionsConsentStore` / `assertDiscoveryInstructionsIntegrity`); digest **drift → reject fail-closed** (Deadbugz-shaped, **non-tool**). Refuse `cacheScope:public` or bind cache key to caller+server for instruction-bearing discovery (`evaluateDiscoveryCacheScope` / `bindDiscoveryCacheKey`). Empty/absent → **ALLOW**. Compose Deadbugz tools/list + GhostSplice arg-content + KPI-C — do **not** subsume under tools/list-only. KPI = isolate+cap+pin+cache policy; **not** deepset 80%. Soft residual: host must wire pin into connect/consent. See `docs/mcp-discovery-instructions.md`.
+
+## Unreleased
+
+### Added
 - **ExplosivePrompt / widen DL-008 (conditional IPI thin land):** Detect **conditional structure** in untrusted ingest (`if`/`when` + deferred state-changing tool), including **benign conversational closings** (thanks / bye / goodbye / finish) — **not** phrase-list-only Crowdstrike lexicon. Quarantine/flag at ingest via `detectDelayedTrigger` / `DelayedTriggerWatch`. **ActionGuard plant-provenance bind** (`opts.delayedPlant` / `denyDelayedPlantBind`): proposed tool matching armed deferred action from untrusted ingest → **DENY / escalate**; closing alone insufficient; open TrustedPlan does not clear bind. **KPI-C** goal destination/recipient compose on EP-armed acts (`denyEpGoalDestinationBind`). User / HITL (`SourceTrust=user` or explicit confirm) → **ALLOW**. Preserve DL-008 CRM BCC baseline (no-worsen). KPI = **ingest conditional-structure flag + act-bind on trigger**; **not** deepset 80%. Soft residual: host SessionScorer / Watch wiring of delayed flags. See `docs/explosiveprompt-delayed-trigger.md`.
 
 ## Unreleased
