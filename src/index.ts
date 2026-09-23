@@ -283,6 +283,66 @@ export type {
   ReleaseApprovalResult,
 } from './delivery/approval-binding.js';
 
+// A2M Attraction→Manipulation thin land (prefer-pin / return IFC / C-DoS / mcp_config gate)
+export {
+  ToolAdmissionStore,
+  admitTool,
+  checkToolAdmission,
+  preferPinnedTool,
+  selectToolForCapability,
+  verifyAdmittedDigest,
+  normalizeSchemaDigest,
+} from './delivery/tool-admission.js';
+export type {
+  AdmittedTool,
+  ToolAdmissionCandidate,
+  ToolAdmissionResult,
+  ToolAdmissionVerdict,
+  PreferPinSelectionInput,
+} from './delivery/tool-admission.js';
+
+export {
+  applyReturnIfc,
+  labelToolReturn,
+  isInstructionShapedField,
+  isReturnTrustedDirective,
+  RETURN_INSTRUCTION_FIELDS,
+} from './delivery/return-ifc.js';
+export type {
+  ReturnIfcResult,
+  ReturnIfcOptions,
+  ReturnIfcVerdict,
+  ReturnTrustLabel,
+} from './delivery/return-ifc.js';
+
+export {
+  ToolCallBudgetStore,
+  checkToolCallBudget,
+  gateToolCall,
+} from './delivery/tool-call-budget.js';
+export type {
+  ToolCallBudgetConfig,
+  ToolCallBudgetCheckInput,
+  ToolCallBudgetResult,
+  ToolCallBudgetVerdict,
+  ToolCallRecordInput,
+  SessionToolStats,
+} from './delivery/tool-call-budget.js';
+
+export {
+  gateMcpConfigWrite,
+  mcpConfigApprovalVector,
+  digestMcpConfigWrite,
+} from './delivery/mcp-config-gate.js';
+export type {
+  McpConfigWriteAttempt,
+  McpConfigApprovalBinding,
+  McpConfigGateResult,
+  McpConfigGateVerdict,
+  McpConfigWriteAction,
+  McpServerProposal,
+} from './delivery/mcp-config-gate.js';
+
 export {
   scanToolSchema,
   TOOL_SCHEMA_INTEGRITY_KEYS,
