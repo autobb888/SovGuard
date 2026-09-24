@@ -176,7 +176,7 @@ export type {
 
 // Re-export individual modules for advanced use
 export { SessionScorer } from './scanner/session-scorer.js';
-export type { SessionEscalation, SessionScorerConfig, SessionScoreEntry } from './scanner/session-scorer.js';
+export type { SessionEscalation, SessionScorerConfig, SessionScoreEntry, ProvisionalChoice, OrderFlipResult } from './scanner/session-scorer.js';
 export { scan } from './scanner/index.js';
 export { scanContext } from './scanner/context.js';
 export type { ScanMode } from './scanner/scan-mode.js';
@@ -427,6 +427,38 @@ export type {
   PeerRenameResult,
   PeerRegistryOptions,
 } from './delivery/peer-registry.js';
+
+
+export {
+  DecisionStepBarrier,
+  compareCanonical,
+  canonicalToolOrder,
+  serializeCanonical,
+} from './delivery/decision-step-barrier.js';
+export type {
+  ToolObservation,
+  BarrierState,
+  DecisionStep,
+  BarrierVerdict,
+  BarrierGate,
+  EnrollResult,
+  SealResult,
+  SerializeForModelResult,
+  DecisionStepBarrierOptions,
+} from './delivery/decision-step-barrier.js';
+
+export {
+  evaluateOrderConsistency,
+  permutations,
+  decideCanonicalOnly,
+} from './delivery/order-consistency.js';
+export type {
+  OrderConsistencyVerdict,
+  OrderConsistencyGate,
+  OrderConsistencyConfig,
+  OrderConsistencyResult,
+} from './delivery/order-consistency.js';
+
 
 
 export {

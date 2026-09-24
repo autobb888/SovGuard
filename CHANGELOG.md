@@ -1,6 +1,11 @@
 ## Unreleased
 
 ### Added
+- **ChronosAttack / Tool Order (thin land A–C):** `DecisionStepBarrier` — buffer tool observations per decision id; present **canonical tool-name order** (arrival must not set serialization). `evaluateOrderConsistency` — m=3 → 6 perms; max votes ≥4 → ALLOW else ABSTAIN/HITL. `SessionScorer.recordProvisionalChoice` / `observeLateAuthentic` — flip after delayed authentic obs → escalate (soft; escalate-before-deny). Compose ActionGuard content-side; **do not reopen A2M or ControlToken**; PeerRegistry Soft C–E / Soft D host stay soft. Soft residual: async host wait-until-quiescence. KPI = barrier + order-consistency abstain + order-flip escalate; **not** deepset 80%. Escalate BLOCK. Shapes only — no ChronosAttack kit. See `docs/chronos-tool-order.md`.
+
+## Unreleased
+
+### Added
 - **A2A NameCollision (thin land A–B):** `PeerRegistry` — enroll peers under authenticated origin + opaque stable principal (`mintStablePeerId`); routes/tools/workflows/auth resolve by `stableId` only — **never** by `AgentCard.name`. Exact + normalization-equivalent name collisions from distinct origins → **DENY** second register (fail-closed; enrolled origin sticks). Presentational `updateDisplayName` does not retarget principal (NC3). Compose peer-envelope (`from` not authority). Soft C–E (UI / broker / authority-after-identity) documented only (`isNameDerivedBrokerTopic` helper). **Do not** stretch `resolveToolShadowing` / A2M `preferPinnedTool` as identity fix; **do not reopen A2M**. KPI = origin-bound ID + fail-closed duplicates; **not** deepset 80%. Escalate BLOCK. See `docs/a2a-name-collision.md`.
 
 ## Unreleased

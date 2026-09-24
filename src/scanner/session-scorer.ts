@@ -64,6 +64,27 @@ export interface SessionScorerConfig {
   highSumOverride?: number;
 }
 
+
+/** Chronos thin land C — provisional choice for one logical decision. */
+export interface ProvisionalChoice {
+  decisionId: string;
+  choice: string;
+  recordedAt: number;
+}
+
+/** Result of late authentic observation after provisional choice. */
+export interface OrderFlipResult {
+  /** True when late authentic obs flipped the provisional choice → escalate. */
+  escalated: boolean;
+  flipped: boolean;
+  provisionalChoice?: string;
+  choiceAfterLate?: string;
+  decisionId: string;
+  /** Soft signal; escalate-before-deny (never hard DENY here). */
+  signal: 'OrderFlip.none' | 'OrderFlip.ESCALATE_flip_after_late_obs';
+  reason?: string;
+}
+
 const DEFAULT_WINDOW_SIZE = 10;
 const DEFAULT_SUM_THRESHOLD = 1.5;
 const DEFAULT_MAX_AGE_MS = 3600000; // 1 hour
@@ -87,6 +108,8 @@ interface SessionMeta {
 export class SessionScorer {
   private sessions = new Map<string, SessionScoreEntry[]>();
   private sessionMeta = new Map<string, SessionMeta>();
+  /** Chronos C: provisional choices keyed by sessionId::decisionId */
+  private provisionalChoices = new Map<string, ProvisionalChoice>();
   private accessOrder = new Map<string, true>(); // O(1) LRU tracking via Map insertion order
   private readonly windowSize: number;
   private readonly sumThreshold: number;
@@ -253,10 +276,12 @@ export class SessionScorer {
    * Get current escalation status for a session without recording.
    */
   check(sessionId: string): SessionEscalation {
+    const metaEarly = this.sessionMeta.get(sessionId);
     const scores = this.sessions.get(sessionId);
     if (!scores || scores.length === 0) {
       return {
-        escalated: false,
+        // Chronos C / forceEscalated may be set without PI score window yet
+        escalated: !!(metaEarly?.forceEscalated),
         rollingSum: 0,
         windowSize: 0,
         threshold: this.sumThreshold,
@@ -294,12 +319,95 @@ export class SessionScorer {
   }
 
   /**
+   * Chronos C — record a provisional decision choice before all authentic
+   * observations have arrived (or before barrier seal). Soft signal only.
+   */
+  recordProvisionalChoice(sessionId: string, decisionId: string, choice: string): void {
+    const sid = String(sessionId ?? '').trim();
+    const did = String(decisionId ?? '').trim();
+    if (!sid || !did) return;
+    const key = `${sid}::${did}`;
+    this.provisionalChoices.set(key, {
+      decisionId: did,
+      choice: String(choice ?? ''),
+      recordedAt: Date.now(),
+    });
+    this.touchLRU(sid);
+  }
+
+  /**
+   * Chronos C — after a delayed authentic observation, re-evaluate choice.
+   * If the choice flips vs provisional → escalate (escalate-before-deny).
+   * Does not hard-DENY; host may HITL.
+   */
+  observeLateAuthentic(
+    sessionId: string,
+    decisionId: string,
+    choiceAfterLate: string,
+  ): OrderFlipResult {
+    const sid = String(sessionId ?? '').trim();
+    const did = String(decisionId ?? '').trim();
+    const after = String(choiceAfterLate ?? '');
+    const key = `${sid}::${did}`;
+    const prov = this.provisionalChoices.get(key);
+
+    if (!prov) {
+      return {
+        escalated: false,
+        flipped: false,
+        decisionId: did,
+        choiceAfterLate: after,
+        signal: 'OrderFlip.none',
+        reason: 'no provisional choice recorded',
+      };
+    }
+
+    const flipped = prov.choice !== after;
+    if (flipped) {
+      let meta = this.sessionMeta.get(sid);
+      if (!meta) {
+        meta = { policyRewriteSeen: false, sawSafetyTopic: false, forceEscalated: false };
+        this.sessionMeta.set(sid, meta);
+      }
+      meta.forceEscalated = true;
+      this.touchLRU(sid);
+      return {
+        escalated: true,
+        flipped: true,
+        provisionalChoice: prov.choice,
+        choiceAfterLate: after,
+        decisionId: did,
+        signal: 'OrderFlip.ESCALATE_flip_after_late_obs',
+        reason: `provisional "${prov.choice}" flipped to "${after}" after late authentic obs`,
+      };
+    }
+
+    return {
+      escalated: !!(this.sessionMeta.get(sid)?.forceEscalated),
+      flipped: false,
+      provisionalChoice: prov.choice,
+      choiceAfterLate: after,
+      decisionId: did,
+      signal: 'OrderFlip.none',
+    };
+  }
+
+  /** Read provisional choice if any (test/audit). */
+  getProvisionalChoice(sessionId: string, decisionId: string): ProvisionalChoice | undefined {
+    return this.provisionalChoices.get(`${String(sessionId ?? '').trim()}::${String(decisionId ?? '').trim()}`);
+  }
+
+  /**
    * Clear scores for a session (e.g., on job completion).
    */
   clear(sessionId: string): void {
     this.sessions.delete(sessionId);
     this.accessOrder.delete(sessionId);
     this.sessionMeta.delete(sessionId);
+    const prefix = `${sessionId}::`;
+    for (const k of [...this.provisionalChoices.keys()]) {
+      if (k.startsWith(prefix)) this.provisionalChoices.delete(k);
+    }
   }
 
   /**
