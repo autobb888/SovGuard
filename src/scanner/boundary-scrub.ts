@@ -6,6 +6,9 @@
  * DEFAULT_BOUNDARY_PATTERNS is best-effort — new chat templates may appear;
  * pair with scrub → Unicode fixed-point → scrub so Tags/ZW/confusables cannot
  * reconstitute delimiters after a single pass.
+ * Harmony / gpt-oss `<|end|>` / `<|start|>` / `<|channel|>` / `<|message|>`
+ * included so empty-analysis control-token forges do not survive untrusted ingress
+ * (ControlToken TraceDelete A; replace/escape only — never naive delete).
  */
 import { normalizeToFixedPoint } from './regex.js';
 
@@ -38,6 +41,14 @@ export const DEFAULT_BOUNDARY_PATTERNS: ReadonlyArray<{ label: string; pattern: 
   { label: 'end_header', pattern: /<\|end_header_id\|>/gi },
   { label: 'assistant_role', pattern: /<\/?assistant\b[^>]*>/gi },
   { label: 'user_role_xml', pattern: /<\/?user\b[^>]*>/gi },
+  // Harmony / gpt-oss reserved turn-structure spans (ControlToken TraceDelete A).
+  // Composite forge first so hit label captures assistant<|channel|>analysis<|message|>,
+  // then individual reserved spans (replace/escape via neutralizeBoundaryToken — never delete).
+  { label: 'harmony_analysis_channel', pattern: /assistant\s*<\|channel\|>\s*analysis\s*<\|message\|>/gi },
+  { label: 'harmony_end', pattern: /<\|end\|>/gi },
+  { label: 'harmony_start', pattern: /<\|start\|>/gi },
+  { label: 'harmony_channel', pattern: /<\|channel\|>/gi },
+  { label: 'harmony_message', pattern: /<\|message\|>/gi },
 ];
 
 /** Break delimiter characters so exact parser matches fail; keep readable. */

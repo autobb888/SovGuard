@@ -233,6 +233,19 @@ export type { TrustedPlan, ProposedAction, ActionGuardResult, DeniedAction, Prop
 export { urlOnTrustedAllowlist, normalizeUrlPathname } from './delivery/action-guard.js';
 
 export {
+  assessTraceToolComposite,
+  classifyTraceWeakness,
+  hasUnclosedToolCallSpan,
+  DEFAULT_WEAK_TRACE_MAX_CHARS,
+} from './delivery/trace-tool-composite.js';
+export type {
+  TraceToolCompositeInput,
+  TraceToolCompositeResult,
+  TraceToolVerdict,
+  TraceWeakKind,
+} from './delivery/trace-tool-composite.js';
+
+export {
   memoryWriteGate,
   detectMemoryWriteIntent,
   preferenceRuleActTrust,

@@ -1,6 +1,11 @@
 ## Unreleased
 
 ### Added
+- **ControlToken TraceDelete (thin land A–C):** Extend DL-006 `DEFAULT_BOUNDARY_PATTERNS` with Harmony / gpt-oss `<|end|>` / `<|start|>` / `<|channel|>` / `<|message|>` + analysis-channel forge marker; keep **replace/escape** via `neutralizeBoundaryToken` (**never delete**). New `assessTraceToolComposite` — empty/weak analysis (≤~80 chars / one-line filler) + tool/act → ESCALATE/DENY (require ActionGuard IFC; decoy-resistant); substantial CoT + TrustedPlan → ActionGuard ALLOW path. Soft D parser-harden documented only (`hasUnclosedToolCallSpan` unused by default). Compose DL-002 / GhostSplice / ActionGuard; **do not reopen A2M**. KPI = Harmony scrub + empty/decoy-trace composite; **not** deepset 80%. Escalate BLOCK. See `docs/controltoken-trace-delete.md`.
+
+## Unreleased
+
+### Added
 - **A2M Attraction→Manipulation (thin land):** Prefer-pin (`ToolAdmissionStore`) + return IFC (`applyReturnIfc`) + C-DoS (`ToolCallBudgetStore`) + `gateMcpConfigWrite` (ApprovalBinding). **Not** deepset 80%. Soft host wire; no A2M kit. See `docs/a2m-attraction-manipulation.md`.
 
 - **AWS AgentCore heap-view (thin land):** ActionGuard **shell-class** policy (`shell`/`bash`/`sh`/`code_interpreter`/`run_terminal`/`terminal`/`file_operations`, configurable) → **DENY/escalate** when SourceTrust untrusted (even if tool on TrustedPlan); explicit **user/HITL** → ALLOW (`denyShellClassPolicy`). KPI-C **destination bind** for shell/fetch/POST — destinations ⊆ `TrustedPlan.urls` / `argAllowlist`; open plan insufficient for unexpected webhooks (`denyShellDestinationBind`). **dataProtection** session hygiene — `sessionGateDataProtection` / `recommendDataProtection` for vault/Bearer/identity agents; **global default OFF**. CPE role-attr compose no-worsen. Soft **PARK** platform UID/heap/TTL/OS egress (operator/AWS) — document only. KPI = shell-class act gate + destination bind + DP hygiene; **not** deepset 80%. Not an AWS runtime patch. See `docs/agentcore-shell-class.md`.
