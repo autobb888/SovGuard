@@ -1,6 +1,11 @@
 ## Unreleased
 
 ### Added
+- **A2A NameCollision (thin land A–B):** `PeerRegistry` — enroll peers under authenticated origin + opaque stable principal (`mintStablePeerId`); routes/tools/workflows/auth resolve by `stableId` only — **never** by `AgentCard.name`. Exact + normalization-equivalent name collisions from distinct origins → **DENY** second register (fail-closed; enrolled origin sticks). Presentational `updateDisplayName` does not retarget principal (NC3). Compose peer-envelope (`from` not authority). Soft C–E (UI / broker / authority-after-identity) documented only (`isNameDerivedBrokerTopic` helper). **Do not** stretch `resolveToolShadowing` / A2M `preferPinnedTool` as identity fix; **do not reopen A2M**. KPI = origin-bound ID + fail-closed duplicates; **not** deepset 80%. Escalate BLOCK. See `docs/a2a-name-collision.md`.
+
+## Unreleased
+
+### Added
 - **ControlToken TraceDelete (thin land A–C):** Extend DL-006 `DEFAULT_BOUNDARY_PATTERNS` with Harmony / gpt-oss `<|end|>` / `<|start|>` / `<|channel|>` / `<|message|>` + analysis-channel forge marker; keep **replace/escape** via `neutralizeBoundaryToken` (**never delete**). New `assessTraceToolComposite` — empty/weak analysis (≤~80 chars / one-line filler) + tool/act → ESCALATE/DENY (require ActionGuard IFC; decoy-resistant); substantial CoT + TrustedPlan → ActionGuard ALLOW path. Soft D parser-harden documented only (`hasUnclosedToolCallSpan` unused by default). Compose DL-002 / GhostSplice / ActionGuard; **do not reopen A2M**. KPI = Harmony scrub + empty/decoy-trace composite; **not** deepset 80%. Escalate BLOCK. See `docs/controltoken-trace-delete.md`.
 
 ## Unreleased

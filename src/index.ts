@@ -409,6 +409,27 @@ export { ingestPeerEnvelope, stripHtmlComments } from './delivery/peer-envelope.
 export type { PeerEnvelope, PeerIngestOptions, PeerIngestResult } from './delivery/peer-envelope.js';
 
 export {
+  PeerRegistry,
+  normalizePeerName,
+  normalizePeerOrigin,
+  mintStablePeerId,
+  isNameDerivedBrokerTopic,
+} from './delivery/peer-registry.js';
+export type {
+  AgentCard,
+  EnrolledPeer,
+  PeerEnrollVerdict,
+  PeerEnrollGate,
+  PeerEnrollResult,
+  PeerResolveVerdict,
+  PeerResolveGate,
+  PeerResolveResult,
+  PeerRenameResult,
+  PeerRegistryOptions,
+} from './delivery/peer-registry.js';
+
+
+export {
   detectDelayedTrigger,
   DelayedTriggerWatch,
   delayedTriggerWatch,
