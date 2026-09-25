@@ -590,6 +590,102 @@ export type {
 
 
 
+
+// PersistentBillable thin land A–F (PreReingestion + D1–D4 + polymorphic/stealth)
+export {
+  UNTRUSTED_RETURN_SOURCES,
+  digestRetainedRaw,
+  compressUntrustedReturn,
+  tombstoneUntrustedReturn,
+  preReingestUntrustedReturn,
+  applyPreReingestionBeforeBillable,
+  denyRawReenterUntrusted,
+} from './delivery/pre-reingestion.js';
+export type {
+  UntrustedReturnSource,
+  PreReingestionVerdict,
+  PreReingestionGateId,
+  PreReingestionPolicy,
+  PreReingestInput,
+  PreReingestResult,
+  ApplyPreReingestionInput,
+  ApplyPreReingestionResult,
+} from './delivery/pre-reingestion.js';
+
+export {
+  TokenMassBoundStore,
+  checkTokenMassBound,
+  gateTokenMassBound,
+  estimateTokensFromChars,
+} from './delivery/token-mass-bound.js';
+export type {
+  TokenMassVerdict,
+  TokenMassGateId,
+  TokenMassBoundConfig,
+  TokenMassRecordInput,
+  TokenMassCheckInput,
+  TokenMassCheckResult,
+  SessionTokenMassStats,
+} from './delivery/token-mass-bound.js';
+
+export {
+  AdjacentGrowthBoundStore,
+  checkAdjacentGrowthBound,
+  gateAdjacentGrowthBound,
+} from './delivery/adjacent-growth-bound.js';
+export type {
+  AdjacentGrowthVerdict,
+  AdjacentGrowthGateId,
+  AdjacentGrowthConfig,
+  AdjacentGrowthCheckInput,
+  AdjacentGrowthCheckResult,
+  SessionAdjacentGrowthStats,
+} from './delivery/adjacent-growth-bound.js';
+
+export {
+  ToolTurnDepthStore,
+  checkToolTurnDepth,
+  gateToolTurnDepth,
+} from './delivery/tool-turn-depth.js';
+export type {
+  ToolTurnDepthVerdict,
+  ToolTurnDepthGateId,
+  ToolTurnDepthConfig,
+  ToolTurnDepthRecordInput,
+  ToolTurnDepthCheckInput,
+  ToolTurnDepthCheckResult,
+  SessionToolTurnDepthStats,
+} from './delivery/tool-turn-depth.js';
+
+export {
+  CumulativeSpendStore,
+  digestHostAttestation,
+  checkCumulativeSpend,
+  gateCumulativeSpend,
+} from './delivery/cumulative-spend.js';
+export type {
+  CumulativeSpendVerdict,
+  CumulativeSpendGateId,
+  CumulativeSpendConfig,
+  HostMilestone,
+  ModelProgressClaim,
+  CumulativeSpendCheckInput,
+  CumulativeSpendCheckResult,
+  SessionCumulativeSpendStats,
+} from './delivery/cumulative-spend.js';
+
+export {
+  tripPolymorphicStealth,
+  forceGrowthEvalOnMorph,
+} from './delivery/polymorphic-stealth-trip.js';
+export type {
+  PolymorphicStealthVerdict,
+  PolymorphicStealthGateId,
+  PolymorphicStealthSignal,
+  PolymorphicStealthTripInput,
+  PolymorphicStealthTripResult,
+} from './delivery/polymorphic-stealth-trip.js';
+
 // ApprovalLaundering thin land A–D (effect-bound Pred₆ / closure / MCP network / install lifecycle)
 export {
   freezePred6BeforeAllow,
