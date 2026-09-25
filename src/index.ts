@@ -459,6 +459,62 @@ export type {
   OrderConsistencyResult,
 } from './delivery/order-consistency.js';
 
+export {
+  IndependentRecorder,
+  simulateHarnessSessionWipe,
+  isIndependentRecorderSubstitute,
+} from './delivery/independent-recorder.js';
+export type {
+  RecorderRecordKind,
+  RecorderEntry,
+  RecorderStoreMeta,
+  RecordVerdict,
+  IndependentRecorderGate,
+  RecordResult,
+  IndependentRecorderOptions,
+} from './delivery/independent-recorder.js';
+
+export {
+  HARNESS_SESSION_PATH_PATTERNS,
+  matchHarnessSessionPath,
+  isMutatingSessionPathOp,
+  gateSessionPath,
+  gateSessionPaths,
+} from './delivery/session-path-gate.js';
+export type {
+  SessionPathOp,
+  SessionPathVerdict,
+  SessionPathGateId,
+  SessionPathFraming,
+  SessionPathAttempt,
+  SessionPathGateResult,
+} from './delivery/session-path-gate.js';
+
+export { gateSkillTamper } from './delivery/skill-tamper-gate.js';
+export type {
+  SkillTamperVerdict,
+  SkillTamperGateId,
+  SkillTamperDemandShape,
+  SkillTamperDemand,
+  SkillTamperAttempt,
+  SkillTamperGateResult,
+} from './delivery/skill-tamper-gate.js';
+
+export {
+  DEFAULT_KNOWN_TOOL_BINARIES,
+  ToolAuthenticityTracker,
+  assessToolAuthenticityMutation,
+} from './delivery/tool-authenticity.js';
+export type {
+  ToolAuthenticityVerdict,
+  ToolAuthenticityGate,
+  AuthenticityMutationChannel,
+  ToolRedefineMutation,
+  ToolAuthenticityFlagResult,
+  ToolResultAuthenticity,
+  ToolAuthenticityOptions,
+} from './delivery/tool-authenticity.js';
+
 
 
 export {

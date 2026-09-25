@@ -1,6 +1,11 @@
 ## Unreleased
 
 ### Added
+- **TraceIntegrity / Trace Tampering (thin land A–D):** `IndependentRecorder` — append-only model request/response/stream chunks into a store marked `outsideSandbox: true` (fail-closed on append failure; agent wipe of harness session paths leaves recorder intact; **not** `scan_log`/`audit_log`). `gateSessionPath` — known harness session path shapes (`session.jsonl` / `transcript.db` / `lifecycle.log` / `.claude|.codex|.cursor`) → write/delete/truncate/unlink **DENY + escalate**; privacy/reward framing does not authorize. `gateSkillTamper` — skill/injected wipe-or-fabricate demand → **REFUSE** skill step with `primaryTaskMayComplete: true`. `ToolAuthenticityTracker` — BASH_ENV / shell-snapshot redefine of known binaries → **FLAG**; subsequent results untrusted until absolute-path re-verify. Compose ActionGuard content/plan-side; **do not reopen ControlToken / Chronos / A2A / A2M**; Soft async Chronos host / Soft C–E PeerRegistry / Soft D assessTraceToolComposite / Soft ApprovalBinding / Soft C-DoS stay soft. KPI = host audit integrity helpers; **not** deepset 80%. Escalate BLOCK. Shapes only — no Trace Tampering kit/PoC. See `docs/trace-integrity.md`.
+
+## Unreleased
+
+### Added
 - **ChronosAttack / Tool Order (thin land A–C):** `DecisionStepBarrier` — buffer tool observations per decision id; present **canonical tool-name order** (arrival must not set serialization). `evaluateOrderConsistency` — m=3 → 6 perms; max votes ≥4 → ALLOW else ABSTAIN/HITL. `SessionScorer.recordProvisionalChoice` / `observeLateAuthentic` — flip after delayed authentic obs → escalate (soft; escalate-before-deny). Compose ActionGuard content-side; **do not reopen A2M or ControlToken**; PeerRegistry Soft C–E / Soft D host stay soft. Soft residual: async host wait-until-quiescence. KPI = barrier + order-consistency abstain + order-flip escalate; **not** deepset 80%. Escalate BLOCK. Shapes only — no ChronosAttack kit. See `docs/chronos-tool-order.md`.
 
 ## Unreleased
