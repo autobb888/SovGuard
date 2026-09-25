@@ -589,6 +589,68 @@ export type {
 
 
 
+
+// ApprovalLaundering thin land A–D (effect-bound Pred₆ / closure / MCP network / install lifecycle)
+export {
+  freezePred6BeforeAllow,
+  requireFrozenPred6BeforeAllow,
+  digestEffectBoundRecord,
+  digestProvenanceContent,
+  OMEGA6_CLASSES,
+  PROVENANCE_KEYS,
+} from './delivery/effect-bound-record.js';
+export type {
+  Omega6Class,
+  ProvenanceKey,
+  ProvenanceInput,
+  FreezePred6Input,
+  EffectBoundRecord,
+  EffectBoundGate,
+  FreezePred6Result,
+} from './delivery/effect-bound-record.js';
+
+export {
+  assertEffSubseteqRep,
+  assertClosureWitness,
+  DEFAULT_AMBIENT_ALLOWLIST,
+  HIGH_RISK_OMEGA6,
+} from './delivery/closure-witness.js';
+export type {
+  AmbientResidualClass,
+  ObservedEffect,
+  ClosureVerdict,
+  ClosureWitnessGate,
+  ClosureWitnessResult,
+  ClosureWitnessOptions,
+} from './delivery/closure-witness.js';
+
+export {
+  REMOTE_MCP_TRANSPORTS,
+  isRemoteMcpTransport,
+  requireNetworkOmega6OnCard,
+  gateMcpConfigWriteWithNetworkAtApprove,
+  freezeMcpRemotePred6Card,
+} from './delivery/mcp-network-at-approve.js';
+export type {
+  McpNetworkAtApproveGate,
+  McpNetworkDeclareInput,
+  McpNetworkDeclareResult,
+  GateMcpConfigWithNetworkOpts,
+  GateMcpConfigWithNetworkResult,
+} from './delivery/mcp-network-at-approve.js';
+
+export {
+  predictInstallLifecycle,
+  gateInstallLifecycleApprove,
+  lifecyclePredCoversHooks,
+} from './delivery/install-lifecycle-predict.js';
+export type {
+  InstallAction,
+  InstallApproveAttempt,
+  InstallLifecycleGate,
+  InstallLifecyclePredictResult,
+} from './delivery/install-lifecycle-predict.js';
+
 export {
   detectDelayedTrigger,
   DelayedTriggerWatch,
