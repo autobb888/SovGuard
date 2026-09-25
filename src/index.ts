@@ -210,6 +210,15 @@ export type {
   DataProtectionSessionContext,
   DataProtectionGateResult,
 } from './outbound/data-protection-hygiene.js';
+
+export { redactOutput, REDACT_PLACEHOLDERS } from './outbound/redact-output.js';
+export {
+  J41_POLICY_PROFILES,
+  J41_POLICY_DEFAULT_PER_FLAG,
+  j41ProfileToActions,
+  isJ41PolicyProfile,
+} from './outbound/j41-policy-profile.js';
+export type { J41PolicyProfile, J41PolicyDefault } from './outbound/j41-policy-profile.js';
 export { scanPII } from './outbound/pii.js';
 export { scanURLs } from './outbound/urls.js';
 export { scanCode } from './outbound/code.js';

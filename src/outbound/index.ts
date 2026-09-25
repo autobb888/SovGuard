@@ -107,3 +107,12 @@ export type {
   DataProtectionSessionContext,
   DataProtectionGateResult,
 } from './data-protection-hygiene.js';
+
+export { redactOutput, REDACT_PLACEHOLDERS } from './redact-output.js';
+export {
+  J41_POLICY_PROFILES,
+  J41_POLICY_DEFAULT_PER_FLAG,
+  j41ProfileToActions,
+  isJ41PolicyProfile,
+} from './j41-policy-profile.js';
+export type { J41PolicyProfile, J41PolicyDefault } from './j41-policy-profile.js';
