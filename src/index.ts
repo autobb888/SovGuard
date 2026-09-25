@@ -505,6 +505,78 @@ export {
   ToolAuthenticityTracker,
   assessToolAuthenticityMutation,
 } from './delivery/tool-authenticity.js';
+
+export {
+  truncateArgs,
+  hashEffectClass,
+  MonitorHistoryLedger,
+} from './delivery/monitor-history.js';
+export type {
+  MonitorDecision,
+  MonitorHistoryGate,
+  ToolProposal,
+  MonitorHistoryRecord,
+  MonitorHistoryEvalResult,
+  MonitorHistoryOptions,
+} from './delivery/monitor-history.js';
+
+export {
+  gateWriteStdin,
+  gateChildStdin,
+  gateInteractiveChannel,
+} from './delivery/interactive-channel-gate.js';
+export type {
+  InteractiveChannel,
+  InteractiveChannelVerdict,
+  InteractiveChannelGateId,
+  ParentLaunchPolicy,
+  ParentLaunchContext,
+  InteractiveFollowOn,
+  InteractiveChannelAttempt,
+  InteractiveChannelGateResult,
+} from './delivery/interactive-channel-gate.js';
+
+export {
+  DenialPrecedenceLedger,
+  recordAuthenticatedDenial,
+  gateEquivalentEffect,
+} from './delivery/denial-precedence.js';
+export type {
+  DenialAuthChannel,
+  AuthenticatedDenial,
+  DenialPrecedenceVerdict,
+  DenialPrecedenceGate,
+  EquivalentRetryShape,
+  EquivalentEffectProposal,
+  DenialPrecedenceResult,
+} from './delivery/denial-precedence.js';
+
+export {
+  assessForgedDenial,
+  gateForgedDenial,
+} from './delivery/forged-denial-guard.js';
+export type {
+  DenialAuthSource,
+  ForgedDenialVerdict,
+  ForgedDenialGateId,
+  ForgedDenialProbe,
+  ForgedDenialGuardResult,
+} from './delivery/forged-denial-guard.js';
+
+export {
+  inheritMonitorPolicyCeiling,
+  denyLaunderViaSpawn,
+  gateSubagentSpawn,
+} from './delivery/subagent-policy-inherit.js';
+export type {
+  MonitorPolicyDecision,
+  MonitorPolicyCeiling,
+  SpawnAttempt,
+  SubagentInheritVerdict,
+  SubagentInheritGate,
+  SubagentInheritResult,
+} from './delivery/subagent-policy-inherit.js';
+
 export type {
   ToolAuthenticityVerdict,
   ToolAuthenticityGate,
