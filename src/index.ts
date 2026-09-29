@@ -240,6 +240,27 @@ export { detectPolicyRewrite, detectPolicyAck, detectCrescendoProbe } from './sc
 export { actionGuard, flagUntrustedUrlEcho, extractRemoteUrls, isUntrustedActionSource, scanProposedToolArgs, stringifyProposedToolArgs, isArgContentGateSource, denySideRecipientBind, denyEpGoalDestinationBind, flattenArgAllowlist, resolveArgAllowlist, denyArgAllowlist, denyShellClassPolicy, denyShellDestinationBind, isShellClassTool, isDestinationBindTool, isTrustedShellSource, collectDestinationUrls, DEFAULT_SHELL_CLASS_TOOLS, DEFAULT_DESTINATION_BIND_TOOLS } from './delivery/action-guard.js';
 export type { TrustedPlan, ProposedAction, ActionGuardResult, DeniedAction, ProposedToolArgsScanResult, ProposedToolArgsHit, ActionGuardApprovalBindingOpts } from './delivery/action-guard.js';
 export { urlOnTrustedAllowlist, normalizeUrlPathname } from './delivery/action-guard.js';
+export {
+  stampConnectorProvenance,
+  isConnectorUntrustedSource,
+  UntrustedIngressDigestStore,
+  untrustedIngressDigestStore,
+  denyUntrustedVerbatimReemit,
+  denySideEffectAuthOnUntrusted,
+  denyEgressReplicationBind,
+  highOverlapEcho,
+  collectReemitContentArgs,
+  DEFAULT_HIGH_OVERLAP_THRESHOLD,
+  REEMIT_CONTENT_ARG_KEYS,
+  SIDE_EFFECT_AUTH_ARG_KEYS,
+  SIDE_EFFECT_TOOL_NAMES,
+} from './delivery/egress-replication-bind.js';
+export type {
+  ConnectorProvenanceSource,
+  ConnectorProvenanceStamp,
+  UntrustedIngressRecord,
+  EgressReplicationBindOpts,
+} from './delivery/egress-replication-bind.js';
 
 export {
   assessTraceToolComposite,

@@ -1,6 +1,11 @@
 ## Unreleased
 
 ### Added
+- **SelfReplicatingPI / EgressReplicationBind (thin land A–D):** `stampConnectorProvenance` — host stamps `connector_untrusted` (or `email` / `mcp_result` / `api_response` / `slack_equivalent`) on email/Slack/tool-return ingress. `UntrustedIngressDigestStore` — session-scoped append-only digest set for multi-hop. `denyUntrustedVerbatimReemit` — DENY body/message/content/write args that verbatim/high-overlap echo prior untrusted ingress (TrustedPlan membership alone insufficient). `denySideEffectAuthOnUntrusted` — DENY paired side-effects when auth rests on that text. Wired via `actionGuard` `egressReplication` opts. Compose EP/GhostSplice/KPI-C; **do not reopen** Trace/IME/AL/PB/CT/Chronos/A2A/A2M/EP/PuzzleMask. Soft paraphrase / host Slack identity / payload-echo canary stay soft. KPI = egress↔untrusted-ingress bind; **not** deepset 80%. Escalate BLOCK. Shapes only — pack `pentest/payloads/self-replicating-pi-egress-replication-bind.json`.
+
+## Unreleased
+
+### Added
 - **J41 opt-in PII / data-protection wrapper (thin productization follow-on):** Docs contract for opt-in `dataProtection` (default **OFF** forever; not a DLP product; not deepset 80%; postal/mailing **HOLD**; email/phone warn is address-class stand-in). Named J41 policy profiles `flag` \| `redact` \| `block` map to existing `OutputFlag.action` (`j41ProfileToActions` / `J41_POLICY_PROFILES`); default when DP ON remains today's **per-flag actions** (no remap / no behavior change). Optional host-callable `redactOutput(flags, text)` rewrites `action:'redact'` spans to placeholders (`[REDACTED_KEY]`, `[REDACTED_CC]`, …) — **not** auto-applied inside `scanOutput`. Detectors (`scanPII` / `scanSecrets` / `scanFinancial`) **unchanged**. GhostSplice tool-arg secrets stay always-on (orthogonal). Soft residuals stay soft (host toggle, postal HOLD, Dashboard claims, Soft C-DoS / Soft mcp_config). **Do not reopen** Trace / IME / AL / PB / CT / Chronos / A2A / A2M. Escalate BLOCK. Shapes only — pack `pentest/payloads/j41-optin-pii-wrapper.json`. See `docs/j41-optin-pii-wrapper.md`.
 
 ## Unreleased

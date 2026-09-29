@@ -33,7 +33,9 @@ export type SourceTrust =
   | 'other_agent'    // output from another agent
   | 'email'          // inbound email / recipient-framed content
   | 'web'            // fetched web content
-  | 'file';          // uploaded/attached file content
+  | 'file'           // uploaded/attached file content
+  | 'connector_untrusted' // SelfReplicatingPI: host-stamped connector ingress
+  | 'slack_equivalent';   // SelfReplicatingPI: Slack / channel-equivalent connector
 
 /** What to do when UNTRUSTED content trips the scanner. */
 export type TaintPolicy = 'block' | 'strip' | 'quarantine';

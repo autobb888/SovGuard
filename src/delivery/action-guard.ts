@@ -24,6 +24,13 @@ import {
   type DelayedArm,
   type DelayedTriggerWatch,
 } from '../scanner/delayed-trigger.js';
+import {
+  denyUntrustedVerbatimReemit,
+  denySideEffectAuthOnUntrusted,
+  SIDE_EFFECT_TOOL_NAMES,
+  type UntrustedIngressDigestStore,
+  type UntrustedIngressRecord,
+} from './egress-replication-bind.js';
 
 
 export type UntrustedActionSource =
@@ -36,7 +43,9 @@ export type UntrustedActionSource =
   | 'other_agent'
   | 'job_description'
   | 'api'
-  | 'job';
+  | 'job'
+  | 'connector_untrusted'
+  | 'slack_equivalent';
 
 export interface TrustedPlan {
   /** Logical actions the user authorized (e.g. summarize). */
@@ -80,6 +89,8 @@ const UNTRUSTED_SOURCES = new Set<string>([
   'job_description',
   'api',
   'job',
+  'connector_untrusted',
+  'slack_equivalent',
 ]);
 
 export function isUntrustedActionSource(source: string | undefined): boolean {
@@ -708,6 +719,20 @@ export function actionGuard(
     destinationBindTools?: readonly string[] | string[];
     /** Set false to disable destination bind (default true). */
     enforceDestinationBind?: boolean;
+    /**
+     * SelfReplicatingPI / EgressReplicationBind: bind body/message/content/write
+     * args against prior untrusted connector ingress digests. Open TrustedPlan
+     * membership alone insufficient. Side-effect DENY when auth rests on that text.
+     */
+    egressReplication?: {
+      store?: UntrustedIngressDigestStore;
+      sessionId?: string;
+      ingressDigests?: UntrustedIngressRecord[];
+      SourceTrust?: string;
+      sourceTrust?: string;
+      hitlConfirm?: boolean;
+      highOverlapThreshold?: number;
+    };
   },
 ): ActionGuardResult {
   const allowedTools = new Set<string>([
@@ -828,6 +853,38 @@ export function actionGuard(
             action,
             reason: contentScan.reason ?? 'proposed tool args denied by arg-content gate',
           });
+          continue;
+        }
+      }
+      // SelfReplicatingPI B/C: egress↔untrusted-ingress verbatim/high-overlap re-emit bind
+      if (action.type === 'tool' && opts?.egressReplication) {
+        const er = opts.egressReplication;
+        const erOpts = {
+          store: er.store,
+          sessionId: er.sessionId,
+          ingressDigests: er.ingressDigests,
+          SourceTrust: er.SourceTrust ?? opts.SourceTrust,
+          sourceTrust: er.sourceTrust ?? opts.sourceTrust,
+          hitlConfirm: er.hitlConfirm ?? opts.hitlConfirm,
+          highOverlapThreshold: er.highOverlapThreshold,
+        };
+        const reemitDeny = denyUntrustedVerbatimReemit(name, toolArgs, erOpts);
+        if (reemitDeny) {
+          denied.push({ action, reason: reemitDeny });
+          continue;
+        }
+        const pairedReemitDenied = denied.some(
+          (d) =>
+            d.action.type === 'tool' &&
+            /denyUntrustedVerbatimReemit/.test(d.reason),
+        );
+        const sideDenyEr = denySideEffectAuthOnUntrusted(name, toolArgs, {
+          ...erOpts,
+          pairedReemitDenied:
+            pairedReemitDenied && SIDE_EFFECT_TOOL_NAMES.has(name.toLowerCase()),
+        });
+        if (sideDenyEr) {
+          denied.push({ action, reason: sideDenyEr });
           continue;
         }
       }
